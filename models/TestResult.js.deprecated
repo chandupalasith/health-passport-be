@@ -1,0 +1,22 @@
+const mongoose = require('mongoose');
+
+const testItemSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  value: { type: String, required: true },
+  unit: { type: String },
+  referenceRange: { type: String },
+  flag: { type: String, enum: ['normal', 'high', 'low', 'critical'], default: 'normal' },
+}, { _id: false });
+
+const testResultSchema = new mongoose.Schema({
+  patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true },
+  reportToken: { type: String, required: true, unique: true, index: true },
+  testType: { type: String, required: true, trim: true },
+  collectedAt: { type: Date, default: Date.now },
+  items: [testItemSchema],
+  notes: { type: String },
+  smsSent: { type: Boolean, default: false },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+}, { timestamps: true });
+
+module.exports = mongoose.model('TestResult', testResultSchema);

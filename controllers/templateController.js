@@ -1,0 +1,140 @@
+const TestTemplate = require('../models/TestTemplate');
+
+// Default columns (no 'comment' — comment is a report-level field, not a table column)
+const DEFAULT_COLUMNS = [
+  { key: 'result',   label: 'Result',          columnType: 'builtin' },
+  { key: 'unit',     label: 'Unit',            columnType: 'builtin' },
+  { key: 'refRange', label: 'Reference Range', columnType: 'builtin' },
+  { key: 'flag',     label: 'Flag',            columnType: 'builtin' },
+];
+
+// ── Read endpoints (any logged-in user) ───────────────────────────────────────
+
+/**
+ * GET /api/templates
+ * List all available templates for this lab (system defaults + lab overrides).
+ * Category is populated to return { _id, name, color }.
+ */
+async function listTemplates(req, res, next) {
+  try {
+    // Lab-specific overrides take priority — fetch them first
+    const labTemplates = await TestTemplate.find({ labId: req.user.labId })
+      .select('testType shortName category sampleType price defaultComment columns labId')
+      .populate('category', 'name color');
+
+    // Only show system defaults for test types that have NO lab override
+    const overriddenTypes = new Set(labTemplates.map((t) => t.testType));
+    const sysTemplates = await TestTemplate.find({
+      labId: null,
+      testType: { $nin: [...overriddenTypes] },
+    })
+      .select('testType shortName category sampleType price defaultComment columns labId')
+      .populate('category', 'name color');
+
+    const templates = [...labTemplates, ...sysTemplates]
+      .sort((a, b) => a.testType.localeCompare(b.testType));
+
+    return res.json({ templates });
+  } catch (err) { next(err); }
+}
+
+/**
+ * GET /api/templates/:testType
+ * Returns the full template for a test type.
+ * Priority: lab-specific override → system default.
+ */
+async function getTemplate(req, res, next) {
+  try {
+    const testType = req.params.testType;
+
+    let template =
+      await TestTemplate.findOne({ labId: req.user.labId, testType }).populate('category', 'name color') ??
+      await TestTemplate.findOne({ labId: null,           testType }).populate('category', 'name color');
+
+    if (!template)
+      return res.status(404).json({ message: `No template found for "${testType}".` });
+
+    // Backfill columns for old templates with none stored
+    if (!template.columns || template.columns.length === 0) {
+      template = template.toObject();
+      template.columns = DEFAULT_COLUMNS;
+    }
+
+    return res.json({ template });
+  } catch (err) { next(err); }
+}
+
+// ── Admin CRUD endpoints ───────────────────────────────────────────────────────
+
+/**
+ * POST /api/templates
+ * Create a new lab-specific template (admin only).
+ */
+async function createTemplate(req, res, next) {
+  try {
+    const { testType, shortName, category, sampleType, price, defaultComment, columns, fields } = req.body;
+    if (!testType?.trim())
+      return res.status(400).json({ message: 'testType is required.' });
+
+    const existing = await TestTemplate.findOne({ labId: req.user.labId, testType: testType.trim() });
+    if (existing)
+      return res.status(409).json({ message: `A template for "${testType}" already exists for your lab.` });
+
+    const template = await TestTemplate.create({
+      labId:          req.user.labId,
+      testType:       testType.trim(),
+      shortName:      (shortName       || '').trim(),
+      category:       category         || null,
+      sampleType:     (sampleType      || '').trim(),
+      price:          Number(price)    || 0,
+      defaultComment: (defaultComment  || '').trim(),
+      columns:        columns?.length ? columns : DEFAULT_COLUMNS,
+      fields:         fields ?? [],
+    });
+
+    return res.status(201).json({ template: await template.populate('category', 'name color') });
+  } catch (err) { next(err); }
+}
+
+/**
+ * PUT /api/templates/:id
+ * Update an existing lab template (admin only; only own-lab templates).
+ */
+async function updateTemplate(req, res, next) {
+  try {
+    const template = await TestTemplate.findOne({ _id: req.params.id, labId: req.user.labId });
+    if (!template)
+      return res.status(404).json({ message: 'Template not found.' });
+
+    const { testType, shortName, category, sampleType, price, defaultComment, columns, fields } = req.body;
+
+    if (testType        !== undefined) template.testType        = testType.trim();
+    if (shortName       !== undefined) template.shortName       = shortName.trim();
+    if (category        !== undefined) template.category        = category || null;
+    if (sampleType      !== undefined) template.sampleType      = sampleType.trim();
+    if (price           !== undefined) template.price           = Number(price) || 0;
+    if (defaultComment  !== undefined) template.defaultComment  = (defaultComment || '').trim();
+    if (columns         !== undefined) template.columns         = columns;
+    if (fields          !== undefined) template.fields          = fields;
+
+    await template.save();
+    return res.json({ template: await template.populate('category', 'name color') });
+  } catch (err) { next(err); }
+}
+
+/**
+ * DELETE /api/templates/:id
+ * Remove a lab template (admin only; cannot delete system defaults).
+ */
+async function deleteTemplate(req, res, next) {
+  try {
+    const template = await TestTemplate.findOne({ _id: req.params.id, labId: req.user.labId });
+    if (!template)
+      return res.status(404).json({ message: 'Template not found (or it is a system default).' });
+
+    await template.deleteOne();
+    return res.json({ message: 'Template deleted.' });
+  } catch (err) { next(err); }
+}
+
+module.exports = { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate };

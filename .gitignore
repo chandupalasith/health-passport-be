@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment secrets — never commit these
+.env
+.env.local
+.env.production
+
+# Build output
+frontend/dist/
+
+# Uploaded files — stored in S3 in production
+backend/uploads/letterheads/*
+!backend/uploads/letterheads/.gitkeep
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/
+.idea/
+.claude/
