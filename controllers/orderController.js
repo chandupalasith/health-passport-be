@@ -61,7 +61,12 @@ async function listOrders(req, res, next) {
     const { status, categoryId, testType, date, startDate, endDate, search } = req.query;
     const filter = { labId: req.user.labId };
 
-    if (status) filter.status = status;
+    if (status) {
+      // 'ready' includes legacy 'submitted'; 'delivered' includes legacy 'sent'
+      if      (status === 'ready')     filter.status = { $in: ['ready', 'submitted'] };
+      else if (status === 'delivered') filter.status = { $in: ['delivered', 'sent'] };
+      else                             filter.status = status;
+    }
 
     // ── Date filter (default: today) ──────────────────────────────────────
     const todayStart = new Date();
@@ -88,10 +93,17 @@ async function listOrders(req, res, next) {
       filter.orderedAt = { $gte: todayStart };
     }
 
-    // ── Bill number search ────────────────────────────────────────────────
+    // ── Search: name, mobile, or bill number ─────────────────────────────
     if (search) {
       const regex = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      filter.billNo = { $regex: regex };
+      const matchedPatients = await Patient.find({
+        labId: req.user.labId,
+        $or: [{ name: regex }, { mobile: regex }],
+      }).select('_id').lean();
+      filter.$or = [
+        { billNo:    { $regex: regex } },
+        { patientId: { $in: matchedPatients.map((p) => p._id) } },
+      ];
     }
 
     // ── Category filter ───────────────────────────────────────────────────
@@ -119,4 +131,20 @@ async function listOrders(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { createOrder, listOrders };
+/**
+ * PATCH /api/orders/:orderId/deliver
+ * Marks an order as delivered (triggered when admin/tech clicks Print).
+ */
+async function markDelivered(req, res, next) {
+  try {
+    const order = await Order.findOneAndUpdate(
+      { _id: req.params.orderId, labId: req.user.labId },
+      { status: 'delivered' },
+      { new: true },
+    );
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    return res.json({ order });
+  } catch (err) { next(err); }
+}
+
+module.exports = { createOrder, listOrders, markDelivered };

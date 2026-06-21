@@ -31,25 +31,27 @@ function setAuthCookie(res, token) {
 
 /**
  * POST /api/auth/login
- * Body: { email, password }
+ * Body: { username, password }
+ * username is stored in the `email` field internally for backward compat.
  */
 async function login(req, res, next) {
   try {
-    const { email, password } = req.body;
+    // Accept `username` (new) or `email` (legacy seed scripts)
+    const { username, email, password } = req.body;
+    const identifier = (username || email || '').trim();
 
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required.' });
+    if (!identifier || !password) {
+      return res.status(400).json({ message: 'Username and password are required.' });
     }
 
     // Fetch passwordHash explicitly — it is excluded from queries by default
-    const user = await User.findOne({ email: email.toLowerCase().trim() })
+    const user = await User.findOne({ email: identifier.toLowerCase() })
       .select('+passwordHash')
       .lean(false); // need the Mongoose instance for verifyPassword()
 
     const valid = user && (await user.verifyPassword(password));
     if (!valid) {
-      // Intentionally vague — don't leak whether the email exists
-      return res.status(401).json({ message: 'Invalid email or password.' });
+      return res.status(401).json({ message: 'Invalid username or password.' });
     }
 
     const token = signToken({
@@ -62,11 +64,11 @@ async function login(req, res, next) {
 
     return res.json({
       user: {
-        userId: user._id,
-        name:   user.name,
-        email:  user.email,
-        role:   user.role,
-        labId:  user.labId,
+        userId:   user._id,
+        name:     user.name,
+        username: user.email,
+        role:     user.role,
+        labId:    user.labId,
       },
     });
   } catch (err) {
@@ -96,11 +98,11 @@ async function me(req, res, next) {
       return res.status(401).json({ message: 'User no longer exists.' });
     }
     return res.json({
-      userId: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      labId: user.labId,
+      userId:   user._id,
+      name:     user.name,
+      username: user.email,
+      role:     user.role,
+      labId:    user.labId,
     });
   } catch (err) {
     next(err);

@@ -1,4 +1,6 @@
 const crypto       = require('crypto');
+const path         = require('path');
+const fs           = require('fs');
 const Report       = require('../models/Report');
 const Order        = require('../models/Order');
 const Lab          = require('../models/Lab');
@@ -37,11 +39,30 @@ async function createReport(req, res, next) {
       submittedBy: req.user.userId,
     });
 
-    const reportCount = await Report.countDocuments({ orderId });
-    if (reportCount >= order.testTypes.length)
-      await Order.findByIdAndUpdate(orderId, { status: 'submitted' });
+    // Any saved report moves the order to 'ready'
+    await Order.findByIdAndUpdate(orderId, { status: 'ready' });
 
     return res.status(201).json({ report });
+  } catch (err) { next(err); }
+}
+
+/**
+ * PATCH /api/reports/:reportId
+ * Body: { results, comment }
+ * Updates results/comment on an existing report and invalidates the cached PDF.
+ */
+async function updateReport(req, res, next) {
+  try {
+    const { results, comment } = req.body;
+    const report = await Report.findOne({ _id: req.params.reportId, labId: req.user.labId });
+    if (!report) return res.status(404).json({ message: 'Report not found.' });
+
+    if (results !== undefined) report.results = results;
+    if (comment !== undefined) report.comment = comment.trim();
+    report.pdfUrl = null; // force PDF regeneration on next view
+
+    await report.save();
+    return res.json({ report });
   } catch (err) { next(err); }
 }
 
@@ -67,7 +88,7 @@ async function listReports(req, res, next) {
     // ── Simple queue use ──────────────────────────────────────────────────────
     if (orderId) {
       const reports = await Report.find({ labId, orderId })
-        .select('testType accessToken submittedAt smsSentAt orderId')
+        .select('testType accessToken submittedAt smsSentAt orderId results comment')
         .sort({ submittedAt: -1 });
       return res.json({ reports });
     }
@@ -147,7 +168,7 @@ async function sendReportSms(req, res, next) {
     const result = await sendSMS(patient.mobile, message, lab._id);
 
     await Report.findByIdAndUpdate(report._id, { smsSentAt: new Date() });
-    await Order.findByIdAndUpdate(report.orderId, { status: 'sent' });
+    await Order.findByIdAndUpdate(report.orderId, { status: 'delivered' });
 
     return res.json({
       message:    'SMS sent successfully.',
@@ -178,7 +199,7 @@ async function getPublicReport(req, res, next) {
   try {
     const report = await Report.findOne({ accessToken: req.params.token })
       .populate('patientId',  'name mobile dob ageAtRegistration gender')
-      .populate('labId',      'name address phone logoUrl reportFooter printLetterheadUrl printLetterheadPaddingTop printLetterheadPaddingBottom smsLetterheadUrl smsLetterheadPaddingTop smsLetterheadPaddingBottom')
+      .populate('labId',      'name address phone logoUrl signatureUrl signatoryName signatoryPosition printPaddingTop printPaddingBottom printShowSignatory reportFooter reportAccentColor')
       .populate('orderId',    'refDoctor sampleType billNo orderedAt')
       .populate('submittedBy','name');
 
@@ -219,30 +240,76 @@ async function getPublicReport(req, res, next) {
 
         // Order-level header fields
         order: {
-          refDoctor:      order?.refDoctor  ?? '',
+          refDoctor:      order?.refDoctor  || 'N/A',
           sampleType:     order?.sampleType ?? '',
           billNo:         order?.billNo     ?? '',
           collectionDate: order?.orderedAt  ?? null,
         },
 
         lab: {
-          name:         lab.name,
-          address:      lab.address    ?? '',
-          phone:        lab.phone      ?? '',
-          logoUrl:      lab.logoUrl    ?? null,
-          reportFooter: lab.reportFooter ?? '',
-          printLetterheadUrl:           lab.printLetterheadUrl           ?? null,
-          printLetterheadPaddingTop:    lab.printLetterheadPaddingTop    ?? 120,
-          printLetterheadPaddingBottom: lab.printLetterheadPaddingBottom ?? 60,
-          smsLetterheadUrl:             lab.smsLetterheadUrl             ?? null,
-          smsLetterheadPaddingTop:      lab.smsLetterheadPaddingTop      ?? 120,
-          smsLetterheadPaddingBottom:   lab.smsLetterheadPaddingBottom   ?? 60,
+          name:               lab.name,
+          address:            lab.address            ?? '',
+          phone:              lab.phone              ?? '',
+          logoUrl:            lab.logoUrl            ?? null,
+          signatureUrl:       lab.signatureUrl       ?? null,
+          signatoryName:      lab.signatoryName      ?? '',
+          signatoryPosition:  lab.signatoryPosition  ?? '',
+          printPaddingTop:    lab.printPaddingTop    ?? 25,
+          printPaddingBottom: lab.printPaddingBottom ?? 20,
+          printShowSignatory: lab.printShowSignatory ?? true,
+          reportFooter:       lab.reportFooter       ?? '',
+          reportAccentColor:  lab.reportAccentColor  ?? '#1d4ed8',
         },
         comment:  report.comment ?? '',
         signedBy: report.submittedBy?.name ?? '',
+        token:    req.params.token,
       },
     });
   } catch (err) { next(err); }
 }
 
-module.exports = { createReport, listReports, sendReportSms, getPublicReport };
+// ── PDF endpoint (no auth) ────────────────────────────────────────────────────
+
+/**
+ * GET /api/public/report/:token/pdf
+ * Generates the PDF on first request and caches the URL in report.pdfUrl.
+ * Subsequent requests serve the cached file immediately.
+ */
+async function getReportPdf(req, res, next) {
+  try {
+    let report = await Report.findOne({ accessToken: req.params.token });
+    if (!report) return res.status(404).json({ message: 'Report not found.' });
+
+    // Regenerate if pdfUrl is a local path that no longer exists (e.g. dev server restart)
+    if (report.pdfUrl && !report.pdfUrl.startsWith('http')) {
+      const localPath = path.join(__dirname, '..', report.pdfUrl);
+      if (!fs.existsSync(localPath)) {
+        await Report.findByIdAndUpdate(report._id, { pdfUrl: null });
+        report.pdfUrl = null;
+      }
+    }
+
+    if (!report.pdfUrl) {
+      const full = await Report.findOne({ accessToken: req.params.token })
+        .populate('patientId',   'name mobile dob ageAtRegistration gender')
+        .populate('labId',       'name address phone logoUrl signatureUrl signatoryName signatoryPosition reportFooter')
+        .populate('orderId',     'refDoctor sampleType billNo orderedAt')
+        .populate('submittedBy', 'name');
+
+      const { generatePdf } = require('../services/pdfService');
+      const pdfUrl = await generatePdf(full);
+      await Report.findByIdAndUpdate(report._id, { pdfUrl });
+      report.pdfUrl = pdfUrl;
+    }
+
+    if (report.pdfUrl.startsWith('http')) {
+      return res.redirect(302, report.pdfUrl);
+    }
+
+    const localPath = path.join(__dirname, '..', report.pdfUrl);
+    res.setHeader('Content-Disposition', `attachment; filename="lab-report.pdf"`);
+    return res.sendFile(localPath);
+  } catch (err) { next(err); }
+}
+
+module.exports = { createReport, updateReport, listReports, sendReportSms, getPublicReport, getReportPdf };

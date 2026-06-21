@@ -1,6 +1,8 @@
 const Lab  = require('../models/Lab');
 const { deleteFile } = require('../middleware/upload');
 
+const IMAGE_FIELDS = { logo: 'logoUrl', signature: 'signatureUrl' };
+
 async function getLab(req, res, next) {
   try {
     if (req.params.labId !== req.user.labId.toString()) {
@@ -19,19 +21,31 @@ async function updateLab(req, res, next) {
     }
 
     const {
-      name, address, phone, reportFooter, logoUrl,
+      name, address, phone, reportFooter, reportAccentColor, logoUrl,
+      signatoryName, signatoryPosition,
+      printPaddingTop, printPaddingBottom, printShowSignatory,
       dialogApiKey, dialogSourceAddress,
       notifyApiKey, notifySenderId,
       printLetterheadPaddingTop, printLetterheadPaddingBottom,
       smsLetterheadPaddingTop,   smsLetterheadPaddingBottom,
+      thermalPrinterName, reportPrinterName,
     } = req.body;
 
     const update = {};
-    if (name         !== undefined) update.name         = name;
-    if (address      !== undefined) update.address      = address;
-    if (phone        !== undefined) update.phone        = phone;
-    if (reportFooter !== undefined) update.reportFooter = reportFooter;
-    if (logoUrl      !== undefined) update.logoUrl      = logoUrl;
+    if (name               !== undefined) update.name               = name;
+    if (address            !== undefined) update.address            = address;
+    if (phone              !== undefined) update.phone              = phone;
+    if (reportFooter       !== undefined) update.reportFooter       = reportFooter;
+    if (reportAccentColor  !== undefined) update.reportAccentColor  = reportAccentColor;
+    if (logoUrl           !== undefined) update.logoUrl           = logoUrl;
+    if (signatoryName     !== undefined) update.signatoryName     = signatoryName;
+    if (signatoryPosition !== undefined) update.signatoryPosition = signatoryPosition;
+    if (printPaddingTop    !== undefined) update.printPaddingTop    = Number(printPaddingTop);
+    if (printPaddingBottom !== undefined) update.printPaddingBottom = Number(printPaddingBottom);
+    if (printShowSignatory !== undefined) update.printShowSignatory = Boolean(printShowSignatory);
+
+    if (thermalPrinterName !== undefined) update.thermalPrinterName = thermalPrinterName;
+    if (reportPrinterName  !== undefined) update.reportPrinterName  = reportPrinterName;
 
     if (printLetterheadPaddingTop    !== undefined) update.printLetterheadPaddingTop    = Number(printLetterheadPaddingTop);
     if (printLetterheadPaddingBottom !== undefined) update.printLetterheadPaddingBottom = Number(printLetterheadPaddingBottom);
@@ -122,4 +136,60 @@ async function removeLetterhead(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { getLab, updateLab, uploadLetterhead, removeLetterhead };
+/**
+ * POST /api/labs/:labId/image/:imageType  (imageType = 'logo' | 'signature')
+ */
+async function uploadImage(req, res, next) {
+  try {
+    if (req.params.labId !== req.user.labId.toString()) {
+      return res.status(403).json({ message: 'Forbidden.' });
+    }
+    const { imageType } = req.params;
+    const urlField = IMAGE_FIELDS[imageType];
+    if (!urlField) return res.status(400).json({ message: 'imageType must be "logo" or "signature".' });
+    if (!req.file) return res.status(400).json({ message: 'No file uploaded.' });
+
+    const existing = await Lab.findById(req.params.labId).select(urlField);
+    await deleteFile(existing?.[urlField]);
+
+    const newUrl = req.file.location ?? `/uploads/letterheads/${req.file.filename}`;
+
+    const lab = await Lab.findByIdAndUpdate(
+      req.params.labId,
+      { $set: { [urlField]: newUrl } },
+      { new: true },
+    ).select('-smsCredentials');
+
+    if (!lab) return res.status(404).json({ message: 'Lab not found.' });
+    return res.json({ lab });
+  } catch (err) { next(err); }
+}
+
+/**
+ * DELETE /api/labs/:labId/image/:imageType
+ */
+async function removeImage(req, res, next) {
+  try {
+    if (req.params.labId !== req.user.labId.toString()) {
+      return res.status(403).json({ message: 'Forbidden.' });
+    }
+    const { imageType } = req.params;
+    const urlField = IMAGE_FIELDS[imageType];
+    if (!urlField) return res.status(400).json({ message: 'imageType must be "logo" or "signature".' });
+
+    const lab = await Lab.findById(req.params.labId).select(urlField);
+    if (!lab) return res.status(404).json({ message: 'Lab not found.' });
+
+    await deleteFile(lab[urlField]);
+
+    const updated = await Lab.findByIdAndUpdate(
+      req.params.labId,
+      { $set: { [urlField]: null } },
+      { new: true },
+    ).select('-smsCredentials');
+
+    return res.json({ lab: updated });
+  } catch (err) { next(err); }
+}
+
+module.exports = { getLab, updateLab, uploadLetterhead, removeLetterhead, uploadImage, removeImage };

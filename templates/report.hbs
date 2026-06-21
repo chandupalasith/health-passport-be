@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #000; background: #fff; }
+
+  /* Page fills A4, flex column so signature is pinned to bottom */
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 12mm 12mm 12mm;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Content area grows to push signature down */
+  .content { flex: 1; }
+
+  /* ── Header ── */
+  .header { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 8pt; border-bottom: 2pt solid #000; margin-bottom: 10pt; }
+  .header-left { display: flex; align-items: center; gap: 10pt; }
+  .logo { height: 50pt; width: auto; max-width: 120pt; object-fit: contain; }
+  .lab-name { font-size: 17pt; font-weight: bold; line-height: 1.2; }
+  .lab-contact { font-size: 7.5pt; margin-top: 3pt; color: #333; }
+  .header-right { text-align: right; padding-top: 2pt; }
+  .report-label { font-size: 10pt; font-weight: bold; }
+
+  /* ── Patient / Order Info ── */
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30pt; border-bottom: 1pt solid #000; padding-bottom: 6pt; margin-bottom: 6pt; }
+  .info-row { font-size: 8.5pt; margin-bottom: 2pt; }
+  .info-label { font-weight: bold; }
+
+  /* ── Test heading ── */
+  .test-heading { font-size: 9.5pt; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 0.5pt; margin-bottom: 6pt; }
+
+  /* ── Results table ── */
+  table { width: 100%; border-collapse: collapse; margin-bottom: 10pt; }
+  thead tr { border-top: 2pt solid #000; border-bottom: 1.5pt solid #000; }
+  th { font-size: 7.5pt; font-weight: bold; text-transform: uppercase; text-align: left; padding: 2.5pt 5pt 2.5pt 0; }
+  th:first-child { padding-left: 0; }
+  td { font-size: 8.5pt; padding: 2pt 5pt 2pt 0; border-bottom: 0.5pt solid #d1d5db; }
+  td:first-child { padding-left: 0; }
+  .th-center { text-align: center; }
+  .td-center { text-align: center; }
+
+  tr.section-hdr td {
+    font-size: 7.5pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.3pt;
+    border-top: 1pt solid #aaa; border-bottom: none;
+    padding-top: 4pt; padding-bottom: 1pt;
+    background-color: #f5f5f5;
+  }
+  tr.sub-field td:first-child { padding-left: 14pt; }
+  tr.oor td:first-child, tr.oor td:nth-child(2) { font-weight: bold; }
+
+  /* ── Comments ── */
+  .section-label { font-size: 7pt; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5pt; color: #444; margin-bottom: 3pt; }
+  .comment-section { margin-bottom: 10pt; }
+  .comment-body { font-size: 8.5pt; white-space: pre-wrap; }
+
+  /* ── Report footer text ── */
+  .report-footer { font-size: 7.5pt; border-top: 1pt solid #000; padding-top: 5pt; margin-top: 8pt; white-space: pre-wrap; }
+
+  /* ── Signature — always at the right end of the page ── */
+  .signature-block { display: flex; justify-content: flex-end; margin-top: 16pt; }
+  .signature-inner { text-align: center; min-width: 110pt; }
+  .signature-img { height: 38pt; width: auto; max-width: 150pt; object-fit: contain; display: block; margin: 0 auto 3pt; }
+  .signature-line { border-top: 1pt solid #000; padding-top: 3pt; }
+  .signatory-name     { font-size: 8pt; font-weight: bold; }
+  .signatory-position { font-size: 7.5pt; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="content">
+
+    <!-- Lab Header -->
+    <div class="header">
+      <div class="header-left">
+        {{#if lab.logoDataUrl}}<img src="{{lab.logoDataUrl}}" class="logo" alt="">{{/if}}
+        <div>
+          <div class="lab-name">{{lab.name}}</div>
+          {{#if lab.contactLine}}<div class="lab-contact">{{lab.contactLine}}</div>{{/if}}
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="report-label">Laboratory Report</div>
+      </div>
+    </div>
+
+    <!-- Patient / Order Info -->
+    <div class="info-grid">
+      <div>
+        <div class="info-row"><span class="info-label">Patient: </span>{{patient.name}}</div>
+        {{#if patient.ageDisplay}}<div class="info-row"><span class="info-label">Age: </span>{{patient.ageDisplay}}</div>{{/if}}
+        {{#if patient.genderLabel}}<div class="info-row"><span class="info-label">Gender: </span>{{patient.genderLabel}}</div>{{/if}}
+        <div class="info-row"><span class="info-label">Ref. Doctor: </span>{{order.refDoctor}}</div>
+        {{#if order.sampleType}}<div class="info-row"><span class="info-label">Sample: </span>{{order.sampleType}}</div>{{/if}}
+      </div>
+      <div>
+        {{#if order.billNo}}<div class="info-row"><span class="info-label">Bill No: </span>{{order.billNo}}</div>{{/if}}
+        {{#if order.collectionDate}}<div class="info-row"><span class="info-label">Collected: </span>{{order.collectionDate}}</div>{{/if}}
+        <div class="info-row"><span class="info-label">Approved: </span>{{submittedAt}}</div>
+        {{#if signedBy}}<div class="info-row"><span class="info-label">By: </span>{{signedBy}}</div>{{/if}}
+      </div>
+    </div>
+
+    <!-- Test Heading -->
+    <div class="test-heading">{{testType}}{{#if testShortName}} ({{testShortName}}){{/if}}</div>
+
+    <!-- Results Table -->
+    <table>
+      <thead>
+        <tr>
+          <th style="width:34%">Parameter</th>
+          <th style="width:14%">Result</th>
+          {{#if showUnit}}<th style="width:10%">Unit</th>{{/if}}
+          {{#if showRef}}<th>Reference Range</th>{{/if}}
+          {{#if showPct}}<th style="width:7%">%</th>{{/if}}
+          {{#if showFlag}}<th class="th-center" style="width:7%">Flag</th>{{/if}}
+          {{#each customColumns}}<th>{{label}}</th>{{/each}}
+        </tr>
+      </thead>
+      <tbody>
+        {{#each rows}}
+        {{#if isHeader}}
+        <tr class="section-hdr">
+          <td colspan="{{../totalCols}}">{{name}}</td>
+        </tr>
+        {{else}}
+        <tr class="{{#if isOutOfRange}}oor{{/if}}{{#if isSubField}} sub-field{{/if}}">
+          <td>{{name}}</td>
+          <td>{{result}}</td>
+          {{#if ../showUnit}}<td>{{unit}}</td>{{/if}}
+          {{#if ../showRef}}<td>{{refRange}}</td>{{/if}}
+          {{#if ../showPct}}<td>{{pct}}</td>{{/if}}
+          {{#if ../showFlag}}<td class="td-center">{{flag}}</td>{{/if}}
+          {{#each customValues}}<td>{{value}}</td>{{/each}}
+        </tr>
+        {{/if}}
+        {{/each}}
+      </tbody>
+    </table>
+
+    <!-- Comments -->
+    {{#if comment}}
+    <div class="comment-section">
+      <div class="section-label">Comments / Notes</div>
+      <div class="comment-body">{{comment}}</div>
+    </div>
+    {{/if}}
+
+    <!-- Report Footer Text -->
+    {{#if lab.reportFooter}}
+    <div class="report-footer">{{lab.reportFooter}}</div>
+    {{/if}}
+
+  </div><!-- end .content -->
+
+  <!-- Signature — always at bottom right regardless of content length -->
+  {{#if lab.signatureDataUrl}}
+  <div class="signature-block">
+    <div class="signature-inner">
+      <img src="{{lab.signatureDataUrl}}" class="signature-img" alt="">
+      <div class="signature-line">
+        {{#if lab.signatoryName}}<div class="signatory-name">{{lab.signatoryName}}</div>{{/if}}
+        {{#if lab.signatoryPosition}}<div class="signatory-position">{{lab.signatoryPosition}}</div>{{/if}}
+      </div>
+    </div>
+  </div>
+  {{/if}}
+
+</div>
+</body>
+</html>

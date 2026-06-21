@@ -39,6 +39,7 @@ const reportSchema = new mongoose.Schema({
     ref: 'User',
   },
   smsSentAt: { type: Date, default: null },
+  pdfUrl:    { type: String, default: null },
 });
 
 module.exports = mongoose.model('Report', reportSchema);

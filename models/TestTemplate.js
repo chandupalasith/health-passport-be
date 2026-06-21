@@ -36,12 +36,14 @@ const columnSchema = new mongoose.Schema({
  *   "Negative"      qualitative text (no numeric comparison)
  */
 const fieldSchema = new mongoose.Schema({
-  name:           { type: String, required: true },
-  unit:           { type: String, default: '' },
-  refRangeMale:   { type: String, default: '' },
-  refRangeFemale: { type: String, default: '' },
-  isHeader:       { type: Boolean, default: false },
-  isSubField:     { type: Boolean, default: false },
+  name:            { type: String, required: true },
+  unit:            { type: String, default: '' },
+  refRangeMale:    { type: String, default: '' },
+  refRangeFemale:  { type: String, default: '' },
+  isHeader:        { type: Boolean, default: false },
+  isSubField:      { type: Boolean, default: false },
+  fieldType:       { type: String, enum: ['numeric', 'dropdown', 'text'], default: 'numeric' },
+  dropdownOptions: [{ type: String }],
 }, { _id: false });
 
 const testTemplateSchema = new mongoose.Schema({

@@ -51,6 +51,13 @@ const uploadLetterhead = multer({
   fileFilter,
 }).single('letterhead');
 
+// Generic single-image upload (logo, signature) — reuses same storage
+const uploadImage = multer({
+  storage,
+  limits:     { fileSize: 5 * 1024 * 1024 },
+  fileFilter,
+}).single('image');
+
 // ── S3 delete helper (no-op in dev) ──────────────────────────────────────────
 
 async function deleteFile(url) {
@@ -70,4 +77,4 @@ async function deleteFile(url) {
   }
 }
 
-module.exports = { uploadLetterhead, deleteFile };
+module.exports = { uploadLetterhead, uploadImage, deleteFile };

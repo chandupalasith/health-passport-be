@@ -6,9 +6,11 @@ const User = require('../models/User');
  */
 async function listUsers(req, res, next) {
   try {
-    const users = await User.find({ labId: req.user.labId })
+    const raw = await User.find({ labId: req.user.labId })
       .select('name email role createdAt')
-      .sort({ role: 1, name: 1 });
+      .sort({ role: 1, name: 1 })
+      .lean();
+    const users = raw.map(({ email, ...rest }) => ({ ...rest, username: email }));
     return res.json({ users });
   } catch (err) { next(err); }
 }
@@ -20,25 +22,25 @@ async function listUsers(req, res, next) {
  */
 async function createUser(req, res, next) {
   try {
-    const { name, email, password } = req.body;
+    const { name, username, password } = req.body;
 
-    if (!name?.trim() || !email?.trim() || !password) {
-      return res.status(400).json({ message: 'name, email and password are required.' });
+    if (!name?.trim() || !username?.trim() || !password) {
+      return res.status(400).json({ message: 'name, username and password are required.' });
     }
 
-    const existing = await User.findOne({ email: email.toLowerCase().trim() });
-    if (existing) return res.status(409).json({ message: 'Email already in use.' });
+    const existing = await User.findOne({ email: username.toLowerCase().trim() });
+    if (existing) return res.status(409).json({ message: 'Username already in use.' });
 
     const user = await User.create({
       labId:        req.user.labId,
       name:         name.trim(),
-      email:        email.toLowerCase().trim(),
+      email:        username.toLowerCase().trim(),
       passwordHash: password,
-      role:         'technician',   // admin can only create technicians
+      role:         'technician',
     });
 
     return res.status(201).json({
-      user: { _id: user._id, name: user.name, email: user.email, role: user.role },
+      user: { _id: user._id, name: user.name, username: user.email, role: user.role },
     });
   } catch (err) { next(err); }
 }

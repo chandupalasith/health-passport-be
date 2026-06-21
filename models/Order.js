@@ -16,7 +16,7 @@ const orderSchema = new mongoose.Schema({
   testTypes: [{ type: String, trim: true }],
   status: {
     type: String,
-    enum: ['pending', 'submitted', 'sent'],
+    enum: ['pending', 'ready', 'delivered', 'submitted', 'sent'],
     default: 'pending',
   },
   // Order-level metadata printed on the report header

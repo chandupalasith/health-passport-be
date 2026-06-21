@@ -4,7 +4,14 @@ const labSchema = new mongoose.Schema({
   name:    { type: String, required: true, trim: true },
   address: { type: String, trim: true },
   phone:   { type: String, trim: true },
-  logoUrl: { type: String, trim: true },
+  logoUrl:          { type: String, default: null },
+  signatureUrl:     { type: String, default: null },
+  signatoryName:    { type: String, trim: true, default: '' },
+  signatoryPosition:{ type: String, trim: true, default: '' },
+
+  // SMS / web report appearance — controlled by lab admin
+  reportAccentColor: { type: String, default: '#1d4ed8' },
+  reportFooter:      { type: String, trim: true, default: '' },
 
   // SMS credit balance — topped up by super admin, deducted per SMS sent
   smsCredits: { type: Number, default: 0, min: 0 },
@@ -18,8 +25,17 @@ const labSchema = new mongoose.Schema({
     pageSize:      { type: String, enum: ['A4', 'Letter'], default: 'A4' },
   },
 
+  // Print-on-letterhead settings — controlled by admin
+  printPaddingTop:    { type: Number, default: 25 },   // mm — space for pre-printed header
+  printPaddingBottom: { type: Number, default: 20 },   // mm — space for pre-printed footer
+  printShowSignatory: { type: Boolean, default: true }, // show Name/Position block (admin signs physically)
+
   // When true, a thermal receipt is auto-printed on every new order
   canPrintReceipt: { type: Boolean, default: false },
+
+  // QZ Tray silent-print destination names (Windows printer names, exact match)
+  thermalPrinterName: { type: String, trim: true, default: '' },
+  reportPrinterName:  { type: String, trim: true, default: '' },
 
   // Institution identifier — 4 uppercase letters set by superadmin, used in bill numbers
   labCode:     { type: String, trim: true, uppercase: true, maxlength: 4 },

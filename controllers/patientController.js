@@ -74,4 +74,55 @@ async function createPatient(req, res, next) {
   }
 }
 
-module.exports = { searchPatient, createPatient };
+/**
+ * GET /api/patients
+ * Returns all patients for the lab (up to 5000), optionally filtered by
+ * gender and/or a name/mobile search term.
+ * Age-range filtering is handled client-side since it requires mixing
+ * DOB-computed age with ageAtRegistration.
+ */
+async function listCustomers(req, res, next) {
+  try {
+    const { gender, search } = req.query;
+    const filter = { labId: req.user.labId };
+
+    if (gender === 'male' || gender === 'female') {
+      filter.gender = gender;
+    }
+
+    if (search && search.trim().length >= 2) {
+      const regex = new RegExp(search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      filter.$or = [{ name: regex }, { mobile: regex }];
+    }
+
+    const patients = await Patient.find(filter)
+      .select('name mobile dob ageAtRegistration gender createdAt')
+      .sort({ createdAt: -1 })
+      .limit(5000);
+
+    return res.json({ patients, total: patients.length });
+  } catch (err) { next(err); }
+}
+
+/**
+ * PATCH /api/patients/:patientId
+ * Update name, age, or gender of an existing patient.
+ * Mobile is intentionally not editable (it's the search key).
+ */
+async function updatePatient(req, res, next) {
+  try {
+    const { name, ageAtRegistration, gender } = req.body;
+
+    const patient = await Patient.findOne({ _id: req.params.patientId, labId: req.user.labId });
+    if (!patient) return res.status(404).json({ message: 'Patient not found.' });
+
+    if (name             !== undefined) patient.name              = name.trim();
+    if (ageAtRegistration !== undefined) patient.ageAtRegistration = ageAtRegistration != null ? Number(ageAtRegistration) : undefined;
+    if (gender           !== undefined) patient.gender            = gender || null;
+
+    await patient.save();
+    return res.json({ patient });
+  } catch (err) { next(err); }
+}
+
+module.exports = { searchPatient, createPatient, listCustomers, updatePatient };
