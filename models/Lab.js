@@ -13,6 +13,18 @@ const labSchema = new mongoose.Schema({
   reportAccentColor: { type: String, default: '#1d4ed8' },
   reportFooter:      { type: String, trim: true, default: '' },
 
+  // PDF report typography — controls patient-facing PDF (SMS report)
+  pdfLabNameSize:       { type: Number, default: 17   },
+  pdfAddressSize:       { type: Number, default: 8.5  },
+  pdfMetadataSize:      { type: Number, default: 10.5 },
+  pdfTestHeadingSize:   { type: Number, default: 9.5  },
+  pdfSectionHeaderSize: { type: Number, default: 9.5  },
+  pdfRowPadding:        { type: Number, default: 2    },
+  pdfCommentsSize:      { type: Number, default: 8.5  },
+  pdfFooterSize:        { type: Number, default: 7.5  },
+  pdfLineColor:         { type: String, default: ''   },
+  pdfBadgeColor:        { type: String, default: ''   },
+
   // SMS credit balance — topped up by super admin, deducted per SMS sent
   smsCredits: { type: Number, default: 0, min: 0 },
 

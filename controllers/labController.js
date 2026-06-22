@@ -29,6 +29,9 @@ async function updateLab(req, res, next) {
       printLetterheadPaddingTop, printLetterheadPaddingBottom,
       smsLetterheadPaddingTop,   smsLetterheadPaddingBottom,
       thermalPrinterName, reportPrinterName,
+      pdfLabNameSize, pdfAddressSize, pdfMetadataSize, pdfTestHeadingSize,
+      pdfSectionHeaderSize, pdfRowPadding, pdfCommentsSize, pdfFooterSize,
+      pdfLineColor, pdfBadgeColor,
     } = req.body;
 
     const update = {};
@@ -46,6 +49,17 @@ async function updateLab(req, res, next) {
 
     if (thermalPrinterName !== undefined) update.thermalPrinterName = thermalPrinterName;
     if (reportPrinterName  !== undefined) update.reportPrinterName  = reportPrinterName;
+
+    if (pdfLabNameSize       !== undefined) update.pdfLabNameSize       = Number(pdfLabNameSize);
+    if (pdfAddressSize       !== undefined) update.pdfAddressSize       = Number(pdfAddressSize);
+    if (pdfMetadataSize      !== undefined) update.pdfMetadataSize      = Number(pdfMetadataSize);
+    if (pdfTestHeadingSize   !== undefined) update.pdfTestHeadingSize   = Number(pdfTestHeadingSize);
+    if (pdfSectionHeaderSize !== undefined) update.pdfSectionHeaderSize = Number(pdfSectionHeaderSize);
+    if (pdfRowPadding        !== undefined) update.pdfRowPadding        = Number(pdfRowPadding);
+    if (pdfCommentsSize      !== undefined) update.pdfCommentsSize      = Number(pdfCommentsSize);
+    if (pdfFooterSize        !== undefined) update.pdfFooterSize        = Number(pdfFooterSize);
+    if (pdfLineColor         !== undefined) update.pdfLineColor         = pdfLineColor;
+    if (pdfBadgeColor        !== undefined) update.pdfBadgeColor        = pdfBadgeColor;
 
     if (printLetterheadPaddingTop    !== undefined) update.printLetterheadPaddingTop    = Number(printLetterheadPaddingTop);
     if (printLetterheadPaddingBottom !== undefined) update.printLetterheadPaddingBottom = Number(printLetterheadPaddingBottom);

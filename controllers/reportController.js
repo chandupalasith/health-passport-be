@@ -39,8 +39,14 @@ async function createReport(req, res, next) {
       submittedBy: req.user.userId,
     });
 
-    // Any saved report moves the order to 'ready'
-    await Order.findByIdAndUpdate(orderId, { status: 'ready' });
+    // Promote to 'ready' only when every test type in the order has a report
+    if (order.testTypes.length > 0) {
+      const submitted = await Report.find({ orderId }).select('testType').lean();
+      const submittedSet = new Set(submitted.map((r) => r.testType));
+      if (order.testTypes.every((t) => submittedSet.has(t))) {
+        await Order.findByIdAndUpdate(orderId, { status: 'ready' });
+      }
+    }
 
     return res.status(201).json({ report });
   } catch (err) { next(err); }
@@ -168,7 +174,19 @@ async function sendReportSms(req, res, next) {
     const result = await sendSMS(patient.mobile, message, lab._id);
 
     await Report.findByIdAndUpdate(report._id, { smsSentAt: new Date() });
-    await Order.findByIdAndUpdate(report.orderId, { status: 'delivered' });
+
+    // Mark order delivered only when every test has been SMS'd
+    const orderDoc = await Order.findById(report.orderId).select('testTypes');
+    if (orderDoc) {
+      const sentReports = await Report.find({
+        orderId: report.orderId,
+        smsSentAt: { $ne: null },
+      }).select('testType');
+      const sentTypes = new Set(sentReports.map((r) => r.testType));
+      if (orderDoc.testTypes.every((t) => sentTypes.has(t))) {
+        await Order.findByIdAndUpdate(report.orderId, { status: 'delivered' });
+      }
+    }
 
     return res.json({
       message:    'SMS sent successfully.',
@@ -292,7 +310,7 @@ async function getReportPdf(req, res, next) {
     if (!report.pdfUrl) {
       const full = await Report.findOne({ accessToken: req.params.token })
         .populate('patientId',   'name mobile dob ageAtRegistration gender')
-        .populate('labId',       'name address phone logoUrl signatureUrl signatoryName signatoryPosition reportFooter')
+        .populate('labId',       'name address phone logoUrl signatureUrl signatoryName signatoryPosition reportFooter reportAccentColor pdfLabNameSize pdfAddressSize pdfMetadataSize pdfTestHeadingSize pdfSectionHeaderSize pdfRowPadding pdfCommentsSize pdfFooterSize pdfLineColor pdfBadgeColor')
         .populate('orderId',     'refDoctor sampleType billNo orderedAt')
         .populate('submittedBy', 'name');
 
@@ -302,12 +320,38 @@ async function getReportPdf(req, res, next) {
       report.pdfUrl = pdfUrl;
     }
 
+    const forDownload = req.query.dl === '1';
+
+    // Build a sanitised filename: TestName_PatientName_BillNo.pdf
+    const sanitize = (s) => (s || '').replace(/[^a-zA-Z0-9\s]/g, '').trim().replace(/\s+/g, '_');
+    let pdfFilename = 'lab-report.pdf';
+    if (forDownload) {
+      const named = await Report.findOne({ accessToken: req.params.token })
+        .populate('patientId', 'name')
+        .populate('orderId',   'billNo');
+      const parts = [
+        sanitize(named.testType),
+        sanitize(named.patientId?.name),
+        sanitize(named.orderId?.billNo),
+      ].filter(Boolean);
+      if (parts.length) pdfFilename = parts.join('_') + '.pdf';
+    }
+
     if (report.pdfUrl.startsWith('http')) {
+      if (forDownload) {
+        const nodeFetch = require('node-fetch');
+        const s3Res = await nodeFetch(report.pdfUrl);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${pdfFilename}"`);
+        return s3Res.body.pipe(res);
+      }
       return res.redirect(302, report.pdfUrl);
     }
 
     const localPath = path.join(__dirname, '..', report.pdfUrl);
-    res.setHeader('Content-Disposition', `attachment; filename="lab-report.pdf"`);
+    const disposition = forDownload ? 'attachment' : 'inline';
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `${disposition}; filename="${pdfFilename}"`);
     return res.sendFile(localPath);
   } catch (err) { next(err); }
 }

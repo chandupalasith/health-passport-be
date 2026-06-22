@@ -72,16 +72,16 @@ async function resolveImageUrl(url) {
   if (url.startsWith('http')) {
     try {
       const resp = await nodeFetch(url, { timeout: 8000 });
-      if (!resp.ok) return null;
+      if (!resp.ok) return url;  // let Puppeteer fetch directly
       const buf = await resp.buffer();
       const ct  = resp.headers.get('content-type') || 'image/png';
       return `data:${ct};base64,${buf.toString('base64')}`;
     } catch {
-      return null;
+      return url;  // let Puppeteer fetch directly
     }
   }
 
-  // Local path e.g. /uploads/images/filename.png
+  // Local path e.g. /uploads/letterheads/filename.png
   const localPath = path.join(__dirname, '..', url);
   if (!fs.existsSync(localPath)) return null;
   const ext  = path.extname(localPath).slice(1).toLowerCase();
@@ -212,6 +212,7 @@ async function generatePdf(report) {
     resolveImageUrl(lab.signatureUrl),
   ]);
 
+  const accent = lab.reportAccentColor || '#1d4ed8';
   const data = {
     lab: {
       name:              lab.name,
@@ -221,6 +222,16 @@ async function generatePdf(report) {
       signatoryPosition: lab.signatoryPosition || null,
       logoDataUrl,
       signatureDataUrl,
+      lineColor:         lab.pdfLineColor  || accent,
+      badgeColor:        lab.pdfBadgeColor || accent,
+      labNameSize:       lab.pdfLabNameSize       ?? 17,
+      addressSize:       lab.pdfAddressSize       ?? 8.5,
+      metadataSize:      lab.pdfMetadataSize      ?? 10.5,
+      testHeadingSize:   lab.pdfTestHeadingSize   ?? 9.5,
+      sectionHeaderSize: lab.pdfSectionHeaderSize ?? 9.5,
+      rowPadding:        lab.pdfRowPadding        ?? 2,
+      commentsSize:      lab.pdfCommentsSize      ?? 8.5,
+      footerSize:        lab.pdfFooterSize        ?? 7.5,
     },
     patient: {
       name:        patient.name,

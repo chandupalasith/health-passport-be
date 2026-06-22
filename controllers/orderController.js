@@ -1,5 +1,6 @@
 const Lab          = require('../models/Lab');
 const Order        = require('../models/Order');
+const Report       = require('../models/Report');
 const Patient      = require('../models/Patient');
 const TestTemplate = require('../models/TestTemplate');
 
@@ -127,7 +128,21 @@ async function listOrders(req, res, next) {
       .populate('orderedBy', 'name')
       .sort({ orderedAt: -1 });
 
-    return res.json({ orders });
+    // Attach which test types already have a submitted report (for partial-order indicator)
+    const orderIds = orders.map((o) => o._id);
+    const reports  = await Report.find({ orderId: { $in: orderIds } }).select('orderId testType').lean();
+    const doneMap  = new Map();
+    for (const r of reports) {
+      const key = r.orderId.toString();
+      if (!doneMap.has(key)) doneMap.set(key, []);
+      doneMap.get(key).push(r.testType);
+    }
+    const enriched = orders.map((o) => ({
+      ...o.toObject(),
+      completedTestTypes: doneMap.get(o._id.toString()) ?? [],
+    }));
+
+    return res.json({ orders: enriched });
   } catch (err) { next(err); }
 }
 
