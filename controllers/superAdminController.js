@@ -4,6 +4,8 @@ const Report       = require('../models/Report');
 const Order        = require('../models/Order');
 const SmsTopup     = require('../models/SmsTopup');
 const SystemConfig = require('../models/SystemConfig');
+const TestTemplate = require('../models/TestTemplate');
+const TestCategory = require('../models/TestCategory');
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
 
@@ -297,6 +299,63 @@ async function updatePdfConfig(req, res, next) {
   } catch (err) { next(err); }
 }
 
+// ── Global system-default visibility ────────────────────────────────────────
+
+async function getSystemDefaults(req, res, next) {
+  try {
+    const cfg = await SystemConfig.findOne({ key: 'global' })
+      .select('hiddenSystemTemplates hiddenSystemCategories').lean();
+
+    const hiddenTplSet = new Set(cfg?.hiddenSystemTemplates ?? []);
+    const hiddenCatSet = new Set(cfg?.hiddenSystemCategories ?? []);
+
+    const [rawTemplates, rawCategories] = await Promise.all([
+      TestTemplate.find({ labId: null })
+        .select('testType shortName').sort({ testType: 1 }).lean(),
+      TestCategory.find({ labId: null })
+        .select('name color sortOrder').sort({ sortOrder: 1, name: 1 }).lean(),
+    ]);
+
+    const templates = rawTemplates.map((t) => ({
+      ...t, hidden: hiddenTplSet.has(t.testType),
+    }));
+
+    const categories = rawCategories.map((c) => ({
+      ...c, hidden: hiddenCatSet.has(String(c._id)),
+    }));
+
+    return res.json({ templates, categories });
+  } catch (err) { next(err); }
+}
+
+async function setGlobalTemplateVisibility(req, res, next) {
+  try {
+    const { testType, hidden } = req.body;
+    if (!testType) return res.status(400).json({ message: 'testType is required.' });
+
+    const update = hidden
+      ? { $addToSet: { hiddenSystemTemplates: testType } }
+      : { $pull:     { hiddenSystemTemplates: testType } };
+
+    await SystemConfig.findOneAndUpdate({ key: 'global' }, update, { upsert: true });
+    return res.json({ message: hidden ? 'Template hidden globally.' : 'Template restored globally.' });
+  } catch (err) { next(err); }
+}
+
+async function setGlobalCategoryVisibility(req, res, next) {
+  try {
+    const { categoryId, hidden } = req.body;
+    if (!categoryId) return res.status(400).json({ message: 'categoryId is required.' });
+
+    const update = hidden
+      ? { $addToSet: { hiddenSystemCategories: categoryId } }
+      : { $pull:     { hiddenSystemCategories: categoryId } };
+
+    await SystemConfig.findOneAndUpdate({ key: 'global' }, update, { upsert: true });
+    return res.json({ message: hidden ? 'Category hidden globally.' : 'Category restored globally.' });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getDashboardStats,
   listInstitutions, createInstitution, getInstitution, updateInstitution,
@@ -305,4 +364,5 @@ module.exports = {
   getSmsUsage,
   getDialogConfig, updateDialogConfig,
   updatePdfConfig,
+  getSystemDefaults, setGlobalTemplateVisibility, setGlobalCategoryVisibility,
 };

@@ -6,6 +6,7 @@ const {
   createTemplate,
   updateTemplate,
   deleteTemplate,
+  setSystemVisibility,
 } = require('../controllers/templateController');
 
 router.use(verifyToken);
@@ -18,5 +19,6 @@ router.get('/:testType', getTemplate);
 router.post('/',    requireRole('admin'), createTemplate);
 router.put('/:id',  requireRole('admin'), updateTemplate);
 router.delete('/:id', requireRole('admin'), deleteTemplate);
+router.patch('/system-visibility', requireRole('admin'), setSystemVisibility);
 
 module.exports = router;

@@ -64,6 +64,12 @@ const labSchema = new mongoose.Schema({
   smsLetterheadPaddingTop:    { type: Number, default: 120 },
   smsLetterheadPaddingBottom: { type: Number, default: 60 },
 
+  // System default templates hidden by this lab (stored as testType strings)
+  disabledSystemTemplates: [{ type: String, trim: true }],
+
+  // System default categories hidden by this lab (stored as _id strings)
+  disabledSystemCategories: [{ type: String, trim: true }],
+
   createdAt: { type: Date, default: Date.now },
 });
 

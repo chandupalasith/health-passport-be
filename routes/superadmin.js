@@ -33,4 +33,9 @@ router.patch('/dialog-config', sa.updateDialogConfig);
 // PDF config per lab
 router.patch('/institutions/:labId/pdf-config', sa.updatePdfConfig);
 
+// Global system-default visibility
+router.get(  '/system-defaults',             sa.getSystemDefaults);
+router.patch('/system-defaults/templates',   sa.setGlobalTemplateVisibility);
+router.patch('/system-defaults/categories',  sa.setGlobalCategoryVisibility);
+
 module.exports = router;

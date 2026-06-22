@@ -1,4 +1,6 @@
 const TestTemplate = require('../models/TestTemplate');
+const Lab          = require('../models/Lab');
+const SystemConfig = require('../models/SystemConfig');
 
 // Default columns (no 'comment' — comment is a report-level field, not a table column)
 const DEFAULT_COLUMNS = [
@@ -17,13 +19,22 @@ const DEFAULT_COLUMNS = [
  */
 async function listTemplates(req, res, next) {
   try {
+    const [lab, globalCfg] = await Promise.all([
+      Lab.findById(req.user.labId).select('disabledSystemTemplates').lean(),
+      SystemConfig.findOne({ key: 'global' }).select('hiddenSystemTemplates').lean(),
+    ]);
+
+    const disabled     = new Set(lab?.disabledSystemTemplates ?? []);
+    const globalHidden = new Set(globalCfg?.hiddenSystemTemplates ?? []);
+
     // Lab-specific overrides take priority — fetch them first
     const labTemplates = await TestTemplate.find({ labId: req.user.labId })
       .select('testType shortName category sampleType price defaultComment columns labId')
       .populate('category', 'name color');
 
-    // Only show system defaults for test types that have NO lab override
     const overriddenTypes = new Set(labTemplates.map((t) => t.testType));
+
+    // Fetch all system defaults not overridden by this lab
     const sysTemplates = await TestTemplate.find({
       labId: null,
       testType: { $nin: [...overriddenTypes] },
@@ -31,7 +42,19 @@ async function listTemplates(req, res, next) {
       .select('testType shortName category sampleType price defaultComment columns labId')
       .populate('category', 'name color');
 
-    const templates = [...labTemplates, ...sysTemplates]
+    const includeHidden = req.query.all === '1';
+
+    const systemMapped = sysTemplates.map((t) => {
+      const obj = t.toObject();
+      if (globalHidden.has(t.testType)) return null; // super admin hid globally
+      if (disabled.has(t.testType)) {
+        if (!includeHidden) return null;
+        obj.hidden = true;
+      }
+      return obj;
+    }).filter(Boolean);
+
+    const templates = [...labTemplates.map((t) => t.toObject()), ...systemMapped]
       .sort((a, b) => a.testType.localeCompare(b.testType));
 
     return res.json({ templates });
@@ -137,4 +160,23 @@ async function deleteTemplate(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate };
+/**
+ * PATCH /api/templates/system-visibility
+ * Body: { testType: string, hidden: boolean }
+ * Add or remove a system default template from this lab's disabled list.
+ */
+async function setSystemVisibility(req, res, next) {
+  try {
+    const { testType, hidden } = req.body;
+    if (!testType) return res.status(400).json({ message: 'testType is required.' });
+
+    const update = hidden
+      ? { $addToSet: { disabledSystemTemplates: testType } }
+      : { $pull:     { disabledSystemTemplates: testType } };
+
+    await Lab.findByIdAndUpdate(req.user.labId, update);
+    return res.json({ message: hidden ? 'Template hidden.' : 'Template restored.' });
+  } catch (err) { next(err); }
+}
+
+module.exports = { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, setSystemVisibility };

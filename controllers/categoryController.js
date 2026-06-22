@@ -1,14 +1,39 @@
 const TestCategory = require('../models/TestCategory');
+const Lab          = require('../models/Lab');
+const SystemConfig = require('../models/SystemConfig');
 
 /**
  * GET /api/categories
  * Returns system categories + any lab-specific ones for this lab.
+ * With ?all=1, returns all including hidden system ones (with hidden:true flag).
  */
 async function listCategories(req, res, next) {
   try {
-    const categories = await TestCategory.find({
+    const [lab, globalCfg] = await Promise.all([
+      Lab.findById(req.user.labId).select('disabledSystemCategories').lean(),
+      SystemConfig.findOne({ key: 'global' }).select('hiddenSystemCategories').lean(),
+    ]);
+
+    const disabled     = new Set((lab?.disabledSystemCategories ?? []).map(String));
+    const globalHidden = new Set((globalCfg?.hiddenSystemCategories ?? []).map(String));
+
+    const all = await TestCategory.find({
       $or: [{ labId: null }, { labId: req.user.labId }],
-    }).sort({ sortOrder: 1, name: 1 });
+    }).sort({ sortOrder: 1, name: 1 }).lean();
+
+    const includeHidden = req.query.all === '1';
+
+    const categories = all
+      .map((c) => {
+        const id = String(c._id);
+        if (c.labId === null && globalHidden.has(id)) return null; // super admin hid globally
+        if (c.labId === null && disabled.has(id)) {
+          if (!includeHidden) return null;
+          return { ...c, hidden: true };
+        }
+        return c;
+      })
+      .filter(Boolean);
 
     return res.json({ categories });
   } catch (err) { next(err); }
@@ -45,7 +70,11 @@ async function createCategory(req, res, next) {
  */
 async function updateCategory(req, res, next) {
   try {
-    const category = await TestCategory.findOne({ _id: req.params.id, labId: req.user.labId });
+    // Allow editing system defaults (labId: null) and this lab's own categories
+    const category = await TestCategory.findOne({
+      _id: req.params.id,
+      $or: [{ labId: req.user.labId }, { labId: null }],
+    });
     if (!category)
       return res.status(404).json({ message: 'Category not found.' });
 
@@ -74,4 +103,23 @@ async function deleteCategory(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { listCategories, createCategory, updateCategory, deleteCategory };
+/**
+ * PATCH /api/categories/system-visibility
+ * Body: { categoryId: string, hidden: boolean }
+ * Add or remove a system category from this lab's disabled list.
+ */
+async function setSystemCategoryVisibility(req, res, next) {
+  try {
+    const { categoryId, hidden } = req.body;
+    if (!categoryId) return res.status(400).json({ message: 'categoryId is required.' });
+
+    const update = hidden
+      ? { $addToSet: { disabledSystemCategories: categoryId } }
+      : { $pull:     { disabledSystemCategories: categoryId } };
+
+    await Lab.findByIdAndUpdate(req.user.labId, update);
+    return res.json({ message: hidden ? 'Category hidden.' : 'Category restored.' });
+  } catch (err) { next(err); }
+}
+
+module.exports = { listCategories, createCategory, updateCategory, deleteCategory, setSystemCategoryVisibility };

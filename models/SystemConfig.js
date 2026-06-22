@@ -9,6 +9,9 @@ const systemConfigSchema = new mongoose.Schema({
   // Dialog eSMS — the only SMS provider
   dialogApiKey:        { type: String },
   dialogSourceAddress: { type: String, default: 'HealthPass' },
+  // Globally hidden system defaults (affects ALL labs)
+  hiddenSystemTemplates:  [{ type: String, trim: true }],
+  hiddenSystemCategories: [{ type: String, trim: true }],
   updatedAt:           { type: Date },
   updatedBy:           { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 });
