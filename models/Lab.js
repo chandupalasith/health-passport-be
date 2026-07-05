@@ -6,12 +6,17 @@ const labSchema = new mongoose.Schema({
   phone:   { type: String, trim: true },
   logoUrl:          { type: String, default: null },
   signatureUrl:     { type: String, default: null },
-  signatoryName:    { type: String, trim: true, default: '' },
-  signatoryPosition:{ type: String, trim: true, default: '' },
+  signatoryName:     { type: String, trim: true, default: '' },
+  signatoryPosition: { type: String, trim: true, default: '' },
+  signatoryExtra:    { type: String, trim: true, default: '' },
+  signatoryFontSize: { type: Number, default: 8 },
 
   // SMS / web report appearance — controlled by lab admin
-  reportAccentColor: { type: String, default: '#1d4ed8' },
-  reportFooter:      { type: String, trim: true, default: '' },
+  reportAccentColor:  { type: String, default: '#1d4ed8' },
+  reportFooter:       { type: String, trim: true, default: '' },
+  reportFooterSize:   { type: Number, default: 8 },
+  regNo:              { type: String, trim: true, default: '' },
+  regNoSize:          { type: Number, default: 8 },
 
   // PDF report typography — controls patient-facing PDF (SMS report)
   pdfLabNameSize:       { type: Number, default: 17   },

@@ -1,3 +1,6 @@
+const path         = require('path');
+const fs           = require('fs');
+const mongoose     = require('mongoose');
 const Lab          = require('../models/Lab');
 const User         = require('../models/User');
 const Report       = require('../models/Report');
@@ -276,29 +279,6 @@ async function updateDialogConfig(req, res, next) {
   } catch (err) { next(err); }
 }
 
-// ── PDF config per institution ──────────────────────────────────────────────
-
-async function updatePdfConfig(req, res, next) {
-  try {
-    const { reportFooter, primaryColor, showWatermark, watermarkText, pageSize } = req.body;
-
-    const update = {};
-    if (reportFooter  !== undefined) update['pdfConfig.reportFooter']  = reportFooter;
-    if (primaryColor  !== undefined) update['pdfConfig.primaryColor']  = primaryColor;
-    if (showWatermark !== undefined) update['pdfConfig.showWatermark'] = showWatermark;
-    if (watermarkText !== undefined) update['pdfConfig.watermarkText'] = watermarkText;
-    if (pageSize      !== undefined) update['pdfConfig.pageSize']      = pageSize;
-
-    const lab = await Lab.findByIdAndUpdate(
-      req.params.labId,
-      { $set: update },
-      { new: true },
-    );
-    if (!lab) return res.status(404).json({ message: 'Institution not found.' });
-    return res.json({ pdfConfig: lab.pdfConfig });
-  } catch (err) { next(err); }
-}
-
 // ── Global system-default visibility ────────────────────────────────────────
 
 async function getSystemDefaults(req, res, next) {
@@ -356,6 +336,104 @@ async function setGlobalCategoryVisibility(req, res, next) {
   } catch (err) { next(err); }
 }
 
+// ── PDF storage stats ────────────────────────────────────────────────────────
+
+async function getStorageStats(req, res, next) {
+  try {
+    const reportsDir = path.join(__dirname, '../uploads/reports');
+    const diskMap = {}; // labId -> { fileCount, totalBytes }
+
+    if (fs.existsSync(reportsDir)) {
+      for (const entry of fs.readdirSync(reportsDir, { withFileTypes: true })) {
+        if (entry.isDirectory()) {
+          // New structure: uploads/reports/{labId}/
+          const labId  = entry.name;
+          const labDir = path.join(reportsDir, labId);
+          const files  = fs.readdirSync(labDir).filter((f) => f.endsWith('.pdf'));
+          let bytes = 0;
+          for (const f of files) {
+            try { bytes += fs.statSync(path.join(labDir, f)).size; } catch {}
+          }
+          diskMap[labId] = { fileCount: files.length, totalBytes: bytes };
+        } else if (entry.isFile() && entry.name.endsWith('.pdf')) {
+          // Old flat structure: uploads/reports/{labId}_{reportId}.pdf
+          const labId = entry.name.split('_')[0];
+          try {
+            const bytes = fs.statSync(path.join(reportsDir, entry.name)).size;
+            if (!diskMap[labId]) diskMap[labId] = { fileCount: 0, totalBytes: 0 };
+            diskMap[labId].fileCount++;
+            diskMap[labId].totalBytes += bytes;
+          } catch {}
+        }
+      }
+    }
+
+    const labIds = Object.keys(diskMap);
+    const [labs, dbStats] = await Promise.all([
+      Lab.find({ _id: { $in: labIds } }).select('name').lean(),
+      Report.aggregate([
+        { $match: { pdfUrl: { $ne: null }, labId: { $in: labIds.map((id) => new mongoose.Types.ObjectId(id)) } } },
+        { $group: { _id: '$labId', oldest: { $min: '$submittedAt' }, newest: { $max: '$submittedAt' } } },
+      ]),
+    ]);
+
+    const nameMap  = Object.fromEntries(labs.map((l) => [l._id.toString(), l.name]));
+    const dateMap  = Object.fromEntries(dbStats.map((s) => [s._id.toString(), s]));
+
+    const stats = labIds.map((labId) => ({
+      labId,
+      labName:    nameMap[labId] ?? labId,
+      fileCount:  diskMap[labId].fileCount,
+      totalBytes: diskMap[labId].totalBytes,
+      oldest:     dateMap[labId]?.oldest ?? null,
+      newest:     dateMap[labId]?.newest ?? null,
+    })).sort((a, b) => b.totalBytes - a.totalBytes);
+
+    return res.json({
+      stats,
+      totalBytes: stats.reduce((s, l) => s + l.totalBytes, 0),
+      totalFiles: stats.reduce((s, l) => s + l.fileCount,  0),
+    });
+  } catch (err) { next(err); }
+}
+
+async function clearOldReports(req, res, next) {
+  try {
+    const { labId, olderThanDays } = req.body;
+    const days = Number(olderThanDays);
+    if (!days || days < 1) return res.status(400).json({ message: 'olderThanDays must be a positive number.' });
+
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+
+    const query = { pdfUrl: { $ne: null }, submittedAt: { $lt: cutoff } };
+    if (labId) query.labId = labId;
+
+    const reports = await Report.find(query).select('_id pdfUrl').lean();
+
+    let deletedFiles = 0;
+    let freedBytes   = 0;
+
+    for (const r of reports) {
+      if (r.pdfUrl && !r.pdfUrl.startsWith('http')) {
+        const filePath = path.join(__dirname, '..', r.pdfUrl);
+        try {
+          freedBytes += fs.statSync(filePath).size;
+          fs.unlinkSync(filePath);
+          deletedFiles++;
+        } catch {}
+      }
+    }
+
+    await Report.updateMany(
+      { _id: { $in: reports.map((r) => r._id) } },
+      { $set: { pdfUrl: null } },
+    );
+
+    return res.json({ deletedFiles, freedBytes, clearedRecords: reports.length });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getDashboardStats,
   listInstitutions, createInstitution, getInstitution, updateInstitution,
@@ -363,6 +441,6 @@ module.exports = {
   topupSmsCredits, getTopupHistory,
   getSmsUsage,
   getDialogConfig, updateDialogConfig,
-  updatePdfConfig,
   getSystemDefaults, setGlobalTemplateVisibility, setGlobalCategoryVisibility,
+  getStorageStats, clearOldReports,
 };

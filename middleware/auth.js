@@ -38,15 +38,15 @@ function verifyToken(req, res, next) {
  * Usage:
  *   router.delete('/users/:id', verifyToken, requireRole('admin'), handler)
  */
-function requireRole(role) {
+function requireRole(...roles) {
   return function (req, res, next) {
     if (!req.user) {
       return res.status(401).json({ message: 'Not authenticated.' });
     }
-    if (req.user.role !== role) {
+    if (!roles.includes(req.user.role)) {
       return res
         .status(403)
-        .json({ message: `Access denied — ${role} role required.` });
+        .json({ message: `Access denied — required role: ${roles.join(' or ')}.` });
     }
     next();
   };

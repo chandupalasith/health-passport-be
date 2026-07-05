@@ -18,7 +18,8 @@ const superAdminRoutes   = require('./routes/superadmin');
 const userRoutes         = require('./routes/users');
 const salesRoutes        = require('./routes/sales');
 const doctorRoutes       = require('./routes/doctors');
-const commissionRoutes   = require('./routes/commissions');
+const commissionRoutes         = require('./routes/commissions');
+const collectingCenterRoutes   = require('./routes/collecting-centers');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app  = express();
@@ -51,7 +52,8 @@ app.use('/api/superadmin', superAdminRoutes);
 app.use('/api/users',       userRoutes);
 app.use('/api/sales',       salesRoutes);
 app.use('/api/doctors',     doctorRoutes);
-app.use('/api/commissions', commissionRoutes);
+app.use('/api/commissions',       commissionRoutes);
+app.use('/api/collecting-centers', collectingCenterRoutes);
 
 // ── Public routes (no auth) ─────────────────────────────────────────────────
 app.use('/api/public', publicRoutes);

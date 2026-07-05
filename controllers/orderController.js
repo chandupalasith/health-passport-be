@@ -31,15 +31,16 @@ async function createOrder(req, res, next) {
     const billNo = `${code}/${year2}/${seq}`;
 
     const order = await Order.create({
-      labId:      req.user.labId,
-      patientId:  patient._id,
-      testTypes:  testTypes.map((t) => t.trim()).filter(Boolean),
-      orderedBy:  req.user.userId,
-      status:     'pending',
-      refDoctor:   (refDoctor  || '').trim(),
-      refDoctorId: refDoctorId || null,
-      sampleType:  (sampleType || '').trim(),
+      labId:              req.user.labId,
+      patientId:          patient._id,
+      testTypes:          testTypes.map((t) => t.trim()).filter(Boolean),
+      orderedBy:          req.user.userId,
+      status:             'pending',
+      refDoctor:          (refDoctor  || '').trim(),
+      refDoctorId:        refDoctorId || null,
+      sampleType:         (sampleType || '').trim(),
       billNo,
+      collectingCenterId: req.user.collectingCenterId || null,
     });
 
     return res.status(201).json({ order });
@@ -63,8 +64,8 @@ async function listOrders(req, res, next) {
     const filter = { labId: req.user.labId };
 
     if (status) {
-      // 'ready' includes legacy 'submitted'; 'delivered' includes legacy 'sent'
-      if      (status === 'ready')     filter.status = { $in: ['ready', 'submitted'] };
+      // 'ready' includes fully-ready orders AND partial pending orders (filtered post-join)
+      if      (status === 'ready')     filter.status = { $in: ['ready', 'submitted', 'pending'] };
       else if (status === 'delivered') filter.status = { $in: ['delivered', 'sent'] };
       else                             filter.status = status;
     }
@@ -137,10 +138,38 @@ async function listOrders(req, res, next) {
       if (!doneMap.has(key)) doneMap.set(key, []);
       doneMap.get(key).push(r.testType);
     }
-    const enriched = orders.map((o) => ({
-      ...o.toObject(),
-      completedTestTypes: doneMap.get(o._id.toString()) ?? [],
-    }));
+    const enriched = orders
+      .map((o) => {
+        const completed = doneMap.get(o._id.toString()) ?? [];
+        const completedSet = new Set(completed);
+
+        let viewTestTypes;
+        if (status === 'ready' && o.status === 'pending') {
+          // Partial order shown in ready tab: only the completed tests
+          viewTestTypes = (o.testTypes || []).filter((t) => completedSet.has(t));
+        } else if (status === 'pending') {
+          // Pending tab: only the tests not yet completed
+          viewTestTypes = (o.testTypes || []).filter((t) => !completedSet.has(t));
+        }
+        // For ready/submitted status orders, viewTestTypes is omitted — frontend uses testTypes
+
+        return {
+          ...o.toObject(),
+          completedTestTypes: completed,
+          ...(viewTestTypes !== undefined ? { viewTestTypes } : {}),
+        };
+      })
+      // In the ready tab, drop pending orders that have no completed tests yet
+      .filter((o) => {
+        if (status === 'ready' && o.status === 'pending') {
+          return (o.viewTestTypes ?? []).length > 0;
+        }
+        // In the pending tab, drop orders that are fully complete (no remaining tests)
+        if (status === 'pending') {
+          return (o.viewTestTypes ?? o.testTypes ?? []).length > 0;
+        }
+        return true;
+      });
 
     return res.json({ orders: enriched });
   } catch (err) { next(err); }

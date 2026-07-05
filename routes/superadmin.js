@@ -1,6 +1,7 @@
 const router = require('express').Router();
 const { verifyToken, requireRole } = require('../middleware/auth');
 const sa = require('../controllers/superAdminController');
+const cc = require('../controllers/collectingCenterController');
 
 router.use(verifyToken);
 router.use(requireRole('superadmin'));
@@ -19,6 +20,12 @@ router.get(   '/institutions/:labId/users',           sa.listLabUsers);
 router.post(  '/institutions/:labId/users',           sa.createLabUser);
 router.delete('/institutions/:labId/users/:userId',   sa.deleteLabUser);
 
+// Collecting centers per institution
+router.get(   '/institutions/:labId/centers',          cc.listCenters);
+router.post(  '/institutions/:labId/centers',          cc.createCenter);
+router.patch( '/institutions/:labId/centers/:id',      cc.updateCenter);
+router.delete('/institutions/:labId/centers/:id',      cc.deleteCenter);
+
 // SMS credits
 router.post('/institutions/:labId/topup',         sa.topupSmsCredits);
 router.get( '/institutions/:labId/topup-history', sa.getTopupHistory);
@@ -30,8 +37,9 @@ router.get('/sms-usage', sa.getSmsUsage);
 router.get(  '/dialog-config', sa.getDialogConfig);
 router.patch('/dialog-config', sa.updateDialogConfig);
 
-// PDF config per lab
-router.patch('/institutions/:labId/pdf-config', sa.updatePdfConfig);
+// PDF storage management
+router.get( '/storage/stats',   sa.getStorageStats);
+router.post('/storage/clear',   sa.clearOldReports);
 
 // Global system-default visibility
 router.get(  '/system-defaults',             sa.getSystemDefaults);

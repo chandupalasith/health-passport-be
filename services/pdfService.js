@@ -96,7 +96,7 @@ async function storePdf(pdfBuffer, labId, reportId) {
   if (USE_S3) {
     const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
     const s3  = new S3Client({ region: process.env.AWS_REGION });
-    const key = `reports/${labId}_${reportId}.pdf`;
+    const key = `reports/${labId}/${reportId}.pdf`;
     await s3.send(new PutObjectCommand({
       Bucket:      process.env.AWS_S3_BUCKET,
       Key:         key,
@@ -106,11 +106,10 @@ async function storePdf(pdfBuffer, labId, reportId) {
     return `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
   }
 
-  const dir = path.join(__dirname, '../uploads/reports');
+  const dir = path.join(__dirname, `../uploads/reports/${labId}`);
   fs.mkdirSync(dir, { recursive: true });
-  const filename = `${labId}_${reportId}.pdf`;
-  fs.writeFileSync(path.join(dir, filename), pdfBuffer);
-  return `/uploads/reports/${filename}`;
+  fs.writeFileSync(path.join(dir, `${reportId}.pdf`), pdfBuffer);
+  return `/uploads/reports/${labId}/${reportId}.pdf`;
 }
 
 // ── Default columns (mirrors reportController) ────────────────────────────────
@@ -218,8 +217,13 @@ async function generatePdf(report) {
       name:              lab.name,
       contactLine:       [lab.address, lab.phone].filter(Boolean).join('   |   ') || null,
       reportFooter:      lab.reportFooter      || null,
-      signatoryName:     lab.signatoryName     || null,
-      signatoryPosition: lab.signatoryPosition || null,
+      regNo:             lab.regNo             || null,
+      regNoSize:         lab.regNoSize         ?? 8,
+      signatoryName:         lab.signatoryName         || null,
+      signatoryPosition:     lab.signatoryPosition     || null,
+      signatoryExtra:        lab.signatoryExtra         || null,
+      signatoryFontSize:     lab.signatoryFontSize      ?? 8,
+      signatoryPositionSize: (lab.signatoryFontSize ?? 8) - 0.5,
       logoDataUrl,
       signatureDataUrl,
       lineColor:         lab.pdfLineColor  || accent,
@@ -231,7 +235,7 @@ async function generatePdf(report) {
       sectionHeaderSize: lab.pdfSectionHeaderSize ?? 9.5,
       rowPadding:        lab.pdfRowPadding        ?? 2,
       commentsSize:      lab.pdfCommentsSize      ?? 8.5,
-      footerSize:        lab.pdfFooterSize        ?? 7.5,
+      footerSize:        lab.reportFooterSize     ?? lab.pdfFooterSize ?? 7.5,
     },
     patient: {
       name:        patient.name,

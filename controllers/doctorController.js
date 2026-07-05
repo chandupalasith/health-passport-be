@@ -9,13 +9,14 @@ async function listDoctors(req, res, next) {
 
 async function createDoctor(req, res, next) {
   try {
-    const { name, phone, specialty } = req.body;
+    const { name, phone, specialty, commissionRate } = req.body;
     if (!name?.trim()) return res.status(400).json({ message: 'Name is required.' });
     const doctor = await Doctor.create({
-      labId:     req.user.labId,
-      name:      name.trim(),
-      phone:     phone?.trim()     || '',
-      specialty: specialty?.trim() || '',
+      labId:          req.user.labId,
+      name:           name.trim(),
+      phone:          phone?.trim()     || '',
+      specialty:      specialty?.trim() || '',
+      commissionRate: commissionRate !== undefined ? Number(commissionRate) : 0,
     });
     return res.status(201).json({ doctor });
   } catch (err) { next(err); }
@@ -23,11 +24,12 @@ async function createDoctor(req, res, next) {
 
 async function updateDoctor(req, res, next) {
   try {
-    const { name, phone, specialty } = req.body;
+    const { name, phone, specialty, commissionRate } = req.body;
     const update = {};
-    if (name      !== undefined) update.name      = name.trim();
-    if (phone     !== undefined) update.phone     = phone.trim();
-    if (specialty !== undefined) update.specialty = specialty.trim();
+    if (name           !== undefined) update.name           = name.trim();
+    if (phone          !== undefined) update.phone          = phone.trim();
+    if (specialty      !== undefined) update.specialty      = specialty.trim();
+    if (commissionRate !== undefined) update.commissionRate = Number(commissionRate);
     const doctor = await Doctor.findOneAndUpdate(
       { _id: req.params.id, labId: req.user.labId },
       { $set: update },

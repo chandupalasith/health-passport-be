@@ -29,7 +29,7 @@ async function listTemplates(req, res, next) {
 
     // Lab-specific overrides take priority — fetch them first
     const labTemplates = await TestTemplate.find({ labId: req.user.labId })
-      .select('testType shortName category sampleType price defaultComment columns labId')
+      .select('testType shortName category sampleType price margin defaultComment columns labId')
       .populate('category', 'name color');
 
     const overriddenTypes = new Set(labTemplates.map((t) => t.testType));
@@ -39,7 +39,7 @@ async function listTemplates(req, res, next) {
       labId: null,
       testType: { $nin: [...overriddenTypes] },
     })
-      .select('testType shortName category sampleType price defaultComment columns labId')
+      .select('testType shortName category sampleType price margin defaultComment columns labId')
       .populate('category', 'name color');
 
     const includeHidden = req.query.all === '1';
@@ -95,7 +95,7 @@ async function getTemplate(req, res, next) {
  */
 async function createTemplate(req, res, next) {
   try {
-    const { testType, shortName, category, sampleType, price, defaultComment, columns, fields } = req.body;
+    const { testType, shortName, category, sampleType, price, margin, defaultComment, columns, fields } = req.body;
     if (!testType?.trim())
       return res.status(400).json({ message: 'testType is required.' });
 
@@ -110,6 +110,7 @@ async function createTemplate(req, res, next) {
       category:       category         || null,
       sampleType:     (sampleType      || '').trim(),
       price:          Number(price)    || 0,
+      margin:         Number(margin)   || 0,
       defaultComment: (defaultComment  || '').trim(),
       columns:        columns?.length ? columns : DEFAULT_COLUMNS,
       fields:         fields ?? [],
@@ -129,13 +130,14 @@ async function updateTemplate(req, res, next) {
     if (!template)
       return res.status(404).json({ message: 'Template not found.' });
 
-    const { testType, shortName, category, sampleType, price, defaultComment, columns, fields } = req.body;
+    const { testType, shortName, category, sampleType, price, margin, defaultComment, columns, fields } = req.body;
 
     if (testType        !== undefined) template.testType        = testType.trim();
     if (shortName       !== undefined) template.shortName       = shortName.trim();
     if (category        !== undefined) template.category        = category || null;
     if (sampleType      !== undefined) template.sampleType      = sampleType.trim();
     if (price           !== undefined) template.price           = Number(price) || 0;
+    if (margin          !== undefined) template.margin          = Number(margin) || 0;
     if (defaultComment  !== undefined) template.defaultComment  = (defaultComment || '').trim();
     if (columns         !== undefined) template.columns         = columns;
     if (fields          !== undefined) template.fields          = fields;

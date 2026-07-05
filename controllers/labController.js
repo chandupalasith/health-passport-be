@@ -3,11 +3,13 @@ const { deleteFile } = require('../middleware/upload');
 
 const IMAGE_FIELDS = { logo: 'logoUrl', signature: 'signatureUrl' };
 
+function canAccessLab(req) {
+  return req.user.role === 'superadmin' || req.params.labId === req.user.labId.toString();
+}
+
 async function getLab(req, res, next) {
   try {
-    if (req.params.labId !== req.user.labId.toString()) {
-      return res.status(403).json({ message: 'Forbidden.' });
-    }
+    if (!canAccessLab(req)) return res.status(403).json({ message: 'Forbidden.' });
     const lab = await Lab.findById(req.params.labId).select('-smsCredentials');
     if (!lab) return res.status(404).json({ message: 'Lab not found.' });
     return res.json({ lab });
@@ -16,13 +18,11 @@ async function getLab(req, res, next) {
 
 async function updateLab(req, res, next) {
   try {
-    if (req.params.labId !== req.user.labId.toString()) {
-      return res.status(403).json({ message: 'Forbidden.' });
-    }
+    if (!canAccessLab(req)) return res.status(403).json({ message: 'Forbidden.' });
 
     const {
-      name, address, phone, reportFooter, reportAccentColor, logoUrl,
-      signatoryName, signatoryPosition,
+      name, address, phone, reportFooter, reportFooterSize, reportAccentColor, regNo, regNoSize, logoUrl,
+      signatoryName, signatoryPosition, signatoryExtra, signatoryFontSize,
       printPaddingTop, printPaddingBottom, printShowSignatory,
       dialogApiKey, dialogSourceAddress,
       notifyApiKey, notifySenderId,
@@ -39,10 +39,15 @@ async function updateLab(req, res, next) {
     if (address            !== undefined) update.address            = address;
     if (phone              !== undefined) update.phone              = phone;
     if (reportFooter       !== undefined) update.reportFooter       = reportFooter;
+    if (reportFooterSize   !== undefined) update.reportFooterSize   = Number(reportFooterSize);
     if (reportAccentColor  !== undefined) update.reportAccentColor  = reportAccentColor;
+    if (regNo              !== undefined) update.regNo              = regNo;
+    if (regNoSize         !== undefined) update.regNoSize         = Number(regNoSize);
     if (logoUrl           !== undefined) update.logoUrl           = logoUrl;
     if (signatoryName     !== undefined) update.signatoryName     = signatoryName;
     if (signatoryPosition !== undefined) update.signatoryPosition = signatoryPosition;
+    if (signatoryExtra    !== undefined) update.signatoryExtra    = signatoryExtra;
+    if (signatoryFontSize !== undefined) update.signatoryFontSize = Number(signatoryFontSize);
     if (printPaddingTop    !== undefined) update.printPaddingTop    = Number(printPaddingTop);
     if (printPaddingBottom !== undefined) update.printPaddingBottom = Number(printPaddingBottom);
     if (printShowSignatory !== undefined) update.printShowSignatory = Boolean(printShowSignatory);
@@ -82,17 +87,9 @@ async function updateLab(req, res, next) {
   } catch (err) { next(err); }
 }
 
-/**
- * POST /api/labs/:labId/letterhead/:type  (type = 'print' | 'sms')
- * Upload a PNG/JPG letterhead. Replaces any existing one for that type.
- * File is stored on S3 in production, local disk in development.
- * req.file.location (S3) or req.file.filename (disk) determines the stored URL.
- */
 async function uploadLetterhead(req, res, next) {
   try {
-    if (req.params.labId !== req.user.labId.toString()) {
-      return res.status(403).json({ message: 'Forbidden.' });
-    }
+    if (!canAccessLab(req)) return res.status(403).json({ message: 'Forbidden.' });
     const type = req.params.type;
     if (type !== 'print' && type !== 'sms') {
       return res.status(400).json({ message: 'type must be "print" or "sms".' });
@@ -101,11 +98,9 @@ async function uploadLetterhead(req, res, next) {
 
     const urlField = type === 'print' ? 'printLetterheadUrl' : 'smsLetterheadUrl';
 
-    // Delete the previous file (S3 object or local file)
     const existing = await Lab.findById(req.params.labId).select(urlField);
     await deleteFile(existing?.[urlField]);
 
-    // S3 gives req.file.location; local disk gives req.file.filename
     const newUrl = req.file.location ?? `/uploads/letterheads/${req.file.filename}`;
 
     const lab = await Lab.findByIdAndUpdate(
@@ -119,15 +114,9 @@ async function uploadLetterhead(req, res, next) {
   } catch (err) { next(err); }
 }
 
-/**
- * DELETE /api/labs/:labId/letterhead/:type  (type = 'print' | 'sms')
- * Removes the letterhead image and clears the field.
- */
 async function removeLetterhead(req, res, next) {
   try {
-    if (req.params.labId !== req.user.labId.toString()) {
-      return res.status(403).json({ message: 'Forbidden.' });
-    }
+    if (!canAccessLab(req)) return res.status(403).json({ message: 'Forbidden.' });
     const type = req.params.type;
     if (type !== 'print' && type !== 'sms') {
       return res.status(400).json({ message: 'type must be "print" or "sms".' });
@@ -150,14 +139,9 @@ async function removeLetterhead(req, res, next) {
   } catch (err) { next(err); }
 }
 
-/**
- * POST /api/labs/:labId/image/:imageType  (imageType = 'logo' | 'signature')
- */
 async function uploadImage(req, res, next) {
   try {
-    if (req.params.labId !== req.user.labId.toString()) {
-      return res.status(403).json({ message: 'Forbidden.' });
-    }
+    if (!canAccessLab(req)) return res.status(403).json({ message: 'Forbidden.' });
     const { imageType } = req.params;
     const urlField = IMAGE_FIELDS[imageType];
     if (!urlField) return res.status(400).json({ message: 'imageType must be "logo" or "signature".' });
@@ -179,14 +163,9 @@ async function uploadImage(req, res, next) {
   } catch (err) { next(err); }
 }
 
-/**
- * DELETE /api/labs/:labId/image/:imageType
- */
 async function removeImage(req, res, next) {
   try {
-    if (req.params.labId !== req.user.labId.toString()) {
-      return res.status(403).json({ message: 'Forbidden.' });
-    }
+    if (!canAccessLab(req)) return res.status(403).json({ message: 'Forbidden.' });
     const { imageType } = req.params;
     const urlField = IMAGE_FIELDS[imageType];
     if (!urlField) return res.status(400).json({ message: 'imageType must be "logo" or "signature".' });

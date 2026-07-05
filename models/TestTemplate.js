@@ -66,6 +66,7 @@ const testTemplateSchema = new mongoose.Schema({
 
   sampleType:     { type: String, default: '' },
   price:          { type: Number, default: 0 },
+  margin:         { type: Number, default: 0, min: 0, max: 100 },
   defaultComment: { type: String, default: '' },
   columns:        [columnSchema],
   fields:         [fieldSchema],

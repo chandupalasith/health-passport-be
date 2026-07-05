@@ -30,6 +30,11 @@ const orderSchema = new mongoose.Schema({
     ref: 'User',
     required: true,
   },
+  collectingCenterId: {
+    type:    mongoose.Schema.Types.ObjectId,
+    ref:     'CollectingCenter',
+    default: null,
+  },
 });
 
 module.exports = mongoose.model('Order', orderSchema);

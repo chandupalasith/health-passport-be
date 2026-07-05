@@ -16,6 +16,11 @@ const userSchema = new mongoose.Schema({
     enum:     ['superadmin', 'admin', 'technician'],
     required: true,
   },
+  collectingCenterId: {
+    type:    mongoose.Schema.Types.ObjectId,
+    ref:     'CollectingCenter',
+    default: null,
+  },
   createdAt: { type: Date, default: Date.now },
 });
 

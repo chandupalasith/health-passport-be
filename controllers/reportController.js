@@ -103,19 +103,24 @@ async function listReports(req, res, next) {
     const filter = { labId };
 
     // Date range
+    const now = new Date();
+    const y = now.getFullYear(), m = now.getMonth(), d = now.getDate();
+
     if (date === 'today' || !date) {
-      const todayStart = new Date();
-      todayStart.setUTCHours(0, 0, 0, 0);
-      filter.submittedAt = { $gte: todayStart };
+      filter.submittedAt = { $gte: new Date(y, m, d) };
+    } else if (date === 'yesterday') {
+      filter.submittedAt = {
+        $gte: new Date(y, m, d - 1),
+        $lte: new Date(y, m, d - 1, 23, 59, 59, 999),
+      };
     } else if (date === '7days') {
-      const d = new Date();
-      d.setDate(d.getDate() - 7);
-      d.setUTCHours(0, 0, 0, 0);
-      filter.submittedAt = { $gte: d };
+      filter.submittedAt = { $gte: new Date(y, m, d - 7) };
+    } else if (date === 'all') {
+      // no date restriction — search across all records
     } else if (date === 'custom' && startDate && endDate) {
       filter.submittedAt = {
         $gte: new Date(startDate),
-        $lte: new Date(new Date(endDate).setUTCHours(23, 59, 59, 999)),
+        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)),
       };
     }
 
@@ -217,7 +222,7 @@ async function getPublicReport(req, res, next) {
   try {
     const report = await Report.findOne({ accessToken: req.params.token })
       .populate('patientId',  'name mobile dob ageAtRegistration gender')
-      .populate('labId',      'name address phone logoUrl signatureUrl signatoryName signatoryPosition printPaddingTop printPaddingBottom printShowSignatory reportFooter reportAccentColor')
+      .populate('labId',      'name address phone logoUrl signatureUrl signatoryName signatoryPosition signatoryExtra signatoryFontSize printPaddingTop printPaddingBottom printShowSignatory reportFooter reportFooterSize reportAccentColor regNo regNoSize')
       .populate('orderId',    'refDoctor sampleType billNo orderedAt')
       .populate('submittedBy','name');
 
@@ -272,11 +277,16 @@ async function getPublicReport(req, res, next) {
           signatureUrl:       lab.signatureUrl       ?? null,
           signatoryName:      lab.signatoryName      ?? '',
           signatoryPosition:  lab.signatoryPosition  ?? '',
+          signatoryExtra:     lab.signatoryExtra     ?? '',
+          signatoryFontSize:  lab.signatoryFontSize  ?? 8,
           printPaddingTop:    lab.printPaddingTop    ?? 25,
           printPaddingBottom: lab.printPaddingBottom ?? 20,
           printShowSignatory: lab.printShowSignatory ?? true,
           reportFooter:       lab.reportFooter       ?? '',
+          reportFooterSize:   lab.reportFooterSize   ?? 14,
           reportAccentColor:  lab.reportAccentColor  ?? '#1d4ed8',
+          regNo:              lab.regNo              ?? '',
+          regNoSize:          lab.regNoSize          ?? 8,
         },
         comment:  report.comment ?? '',
         signedBy: report.submittedBy?.name ?? '',
@@ -310,7 +320,7 @@ async function getReportPdf(req, res, next) {
     if (!report.pdfUrl) {
       const full = await Report.findOne({ accessToken: req.params.token })
         .populate('patientId',   'name mobile dob ageAtRegistration gender')
-        .populate('labId',       'name address phone logoUrl signatureUrl signatoryName signatoryPosition reportFooter reportAccentColor pdfLabNameSize pdfAddressSize pdfMetadataSize pdfTestHeadingSize pdfSectionHeaderSize pdfRowPadding pdfCommentsSize pdfFooterSize pdfLineColor pdfBadgeColor')
+        .populate('labId',       'name address phone logoUrl signatureUrl signatoryName signatoryPosition signatoryExtra signatoryFontSize reportFooter reportFooterSize reportAccentColor regNo regNoSize pdfLabNameSize pdfAddressSize pdfMetadataSize pdfTestHeadingSize pdfSectionHeaderSize pdfRowPadding pdfCommentsSize pdfFooterSize pdfLineColor pdfBadgeColor')
         .populate('orderId',     'refDoctor sampleType billNo orderedAt')
         .populate('submittedBy', 'name');
 
