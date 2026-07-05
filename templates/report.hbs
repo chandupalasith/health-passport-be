@@ -70,17 +70,17 @@
   }
 
   /* ── Results table ── */
-  table { width: 100%; border-collapse: collapse; margin-bottom: 22pt; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: {{lab.tableSpacing}}pt; }
   thead tr { border-top: 2pt solid #000; border-bottom: 1.5pt solid #000; }
   th {
-    font-size: 9.5pt;
+    font-size: {{lab.columnHeaderSize}}pt;
     font-weight: bold;
     text-transform: uppercase;
     text-align: left;
     padding: 2.5pt 5pt 2.5pt 0;
   }
   th:first-child { padding-left: 0; }
-  td { font-size: 10.5pt; padding: {{lab.rowPadding}}pt 5pt {{lab.rowPadding}}pt 0; border-bottom: 0.5pt solid #d1d5db; }
+  td { font-size: {{lab.rowSize}}pt; padding: {{lab.rowPadding}}pt 5pt {{lab.rowPadding}}pt 0; border-bottom: 0.5pt solid #d1d5db; }
   td:first-child { padding-left: 0; }
   .th-center { text-align: center; }
   .td-center { text-align: center; }
@@ -159,7 +159,6 @@
         {{#if order.billNo}}<div class="info-row"><span class="info-label">Bill No: </span>{{order.billNo}}</div>{{/if}}
         {{#if order.collectionDate}}<div class="info-row"><span class="info-label">Collected: </span>{{order.collectionDate}}</div>{{/if}}
         <div class="info-row"><span class="info-label">Approved: </span>{{submittedAt}}</div>
-        {{#if signedBy}}<div class="info-row"><span class="info-label">By: </span>{{signedBy}}</div>{{/if}}
       </div>
     </div>
 
