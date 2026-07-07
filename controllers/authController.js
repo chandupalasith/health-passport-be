@@ -1,5 +1,6 @@
 const jwt              = require('jsonwebtoken');
 const User             = require('../models/User');
+const Lab              = require('../models/Lab');
 const CollectingCenter = require('../models/CollectingCenter');
 
 const COOKIE_NAME    = 'token';
@@ -49,6 +50,17 @@ async function login(req, res, next) {
     const valid = user && (await user.verifyPassword(password));
     if (!valid) {
       return res.status(401).json({ message: 'Invalid username or password.' });
+    }
+
+    // Check lab disabled status (super admins bypass this)
+    if (user.role !== 'superadmin' && user.labId) {
+      const lab = await Lab.findById(user.labId).select('isDisabled disabledReason').lean();
+      if (lab?.isDisabled) {
+        return res.status(403).json({
+          message: lab.disabledReason || 'Your account has been suspended. Please contact support to renew your subscription.',
+          code: 'ACCOUNT_DISABLED',
+        });
+      }
     }
 
     const token = signToken({

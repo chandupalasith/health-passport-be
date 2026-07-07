@@ -4,7 +4,7 @@ const { searchPatient, createPatient, listCustomers, updatePatient } = require('
 
 router.use(verifyToken);
 
-router.get('/',               requireRole('admin'), listCustomers);
+router.get('/',               listCustomers);
 router.get('/search',         searchPatient);
 router.post('/',              createPatient);
 router.patch('/:patientId',   updatePatient);

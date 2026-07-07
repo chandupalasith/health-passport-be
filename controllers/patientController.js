@@ -1,10 +1,11 @@
 const Patient = require('../models/Patient');
 
+const NO_PHONE = '0000000000';
+
 /**
  * GET /api/patients/search?mobile=07XXXXXXXX
- * Search for a patient within the calling user's lab by mobile number.
- * Returns { patient } — null when not found, so the frontend never
- * has to handle a 404 for the "not found" case.
+ * Returns { patient } for a normal lookup, or { patient: null, noPhonePatients: [] }
+ * when mobile is the no-phone sentinel (0000000000).
  */
 async function searchPatient(req, res, next) {
   try {
@@ -14,10 +15,18 @@ async function searchPatient(req, res, next) {
       return res.status(400).json({ message: 'Provide at least 7 digits for mobile search.' });
     }
 
+    // No-phone sentinel: return all no-phone patients so cashier can pick
+    if (mobile.trim() === NO_PHONE) {
+      const noPhonePatients = await Patient.find({ labId: req.user.labId, noPhone: true })
+        .select('name mobile dob ageAtRegistration gender noPhone createdAt')
+        .sort({ name: 1 });
+      return res.json({ patient: null, noPhonePatients });
+    }
+
     const patient = await Patient.findOne({
       labId: req.user.labId,
       mobile: mobile.trim(),
-    }).select('name mobile dob ageAtRegistration gender createdAt');
+    }).select('name mobile dob ageAtRegistration gender noPhone createdAt');
 
     return res.json({ patient: patient ?? null });
   } catch (err) {
@@ -46,16 +55,20 @@ async function createPatient(req, res, next) {
       return res.status(400).json({ message: 'Provide either DOB or age — not both.' });
     }
 
-    // ── Uniqueness within lab ───────────────────────────────────────────
-    const existing = await Patient.findOne({
-      labId: req.user.labId,
-      mobile: mobile.trim(),
-    });
-    if (existing) {
-      return res.status(409).json({
-        message: 'A patient with this mobile number is already registered for your lab.',
-        patient: existing,
+    const isNoPhone = mobile.trim() === NO_PHONE;
+
+    // ── Uniqueness within lab (skip for no-phone sentinel) ─────────────
+    if (!isNoPhone) {
+      const existing = await Patient.findOne({
+        labId: req.user.labId,
+        mobile: mobile.trim(),
       });
+      if (existing) {
+        return res.status(409).json({
+          message: 'A patient with this mobile number is already registered for your lab.',
+          patient: existing,
+        });
+      }
     }
 
     const VALID_GENDERS = ['male', 'female'];
@@ -63,6 +76,7 @@ async function createPatient(req, res, next) {
       labId: req.user.labId,
       name:  name.trim(),
       mobile: mobile.trim(),
+      noPhone: isNoPhone,
       ...(dob                  ? { dob: new Date(dob) }                         : {}),
       ...(ageAtRegistration != null ? { ageAtRegistration: Number(ageAtRegistration) } : {}),
       ...(gender && VALID_GENDERS.includes(gender) ? { gender }                 : {}),

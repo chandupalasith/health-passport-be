@@ -20,6 +20,7 @@ const salesRoutes        = require('./routes/sales');
 const doctorRoutes       = require('./routes/doctors');
 const commissionRoutes         = require('./routes/commissions');
 const collectingCenterRoutes   = require('./routes/collecting-centers');
+const outsourcePartnerRoutes   = require('./routes/outsourcePartners');
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app  = express();
@@ -54,6 +55,7 @@ app.use('/api/sales',       salesRoutes);
 app.use('/api/doctors',     doctorRoutes);
 app.use('/api/commissions',       commissionRoutes);
 app.use('/api/collecting-centers', collectingCenterRoutes);
+app.use('/api/outsource-partners', outsourcePartnerRoutes);
 
 // ── Public routes (no auth) ─────────────────────────────────────────────────
 app.use('/api/public', publicRoutes);

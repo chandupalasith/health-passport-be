@@ -434,6 +434,85 @@ async function clearOldReports(req, res, next) {
   } catch (err) { next(err); }
 }
 
+// ── Subscription management ──────────────────────────────────────────────────
+
+function calcRenewalDate(startDate, type) {
+  const d = new Date(startDate);
+  if (type === 'monthly') d.setMonth(d.getMonth() + 1);
+  else if (type === 'yearly') d.setFullYear(d.getFullYear() + 1);
+  return d;
+}
+
+async function listSubscriptions(req, res, next) {
+  try {
+    const labs = await Lab.find()
+      .select('name subscriptionType subscriptionStartDate subscriptionRenewalDate subscriptionNotes isDisabled disabledReason smsCredits createdAt')
+      .sort({ name: 1 })
+      .lean();
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const items = labs.map((lab) => {
+      const renewal = lab.subscriptionRenewalDate ? new Date(lab.subscriptionRenewalDate) : null;
+      const daysLeft = renewal ? Math.ceil((renewal - today) / (1000 * 60 * 60 * 24)) : null;
+      let subStatus = 'none';
+      if (renewal) {
+        if (daysLeft < 0)       subStatus = 'overdue';
+        else if (daysLeft <= 14) subStatus = 'due-soon';
+        else                     subStatus = 'active';
+      }
+      return { ...lab, daysLeft, subStatus };
+    });
+
+    return res.json({ subscriptions: items });
+  } catch (err) { next(err); }
+}
+
+async function updateSubscription(req, res, next) {
+  try {
+    const { subscriptionType, subscriptionStartDate, subscriptionNotes } = req.body;
+
+    if (!subscriptionType || !subscriptionStartDate) {
+      return res.status(400).json({ message: 'subscriptionType and subscriptionStartDate are required.' });
+    }
+    if (!['monthly', 'yearly'].includes(subscriptionType)) {
+      return res.status(400).json({ message: 'subscriptionType must be monthly or yearly.' });
+    }
+
+    const renewalDate = calcRenewalDate(subscriptionStartDate, subscriptionType);
+
+    const lab = await Lab.findByIdAndUpdate(
+      req.params.labId,
+      { $set: { subscriptionType, subscriptionStartDate: new Date(subscriptionStartDate), subscriptionRenewalDate: renewalDate, subscriptionNotes: subscriptionNotes || '' } },
+      { new: true },
+    ).select('name subscriptionType subscriptionStartDate subscriptionRenewalDate subscriptionNotes isDisabled');
+
+    if (!lab) return res.status(404).json({ message: 'Institution not found.' });
+
+    return res.json({ lab });
+  } catch (err) { next(err); }
+}
+
+async function toggleDisable(req, res, next) {
+  try {
+    const { disable, reason } = req.body;
+
+    const lab = await Lab.findByIdAndUpdate(
+      req.params.labId,
+      { $set: {
+        isDisabled:     Boolean(disable),
+        disabledReason: reason?.trim() || 'Your subscription has expired. Please contact support to renew your subscription.',
+      }},
+      { new: true },
+    ).select('name isDisabled disabledReason');
+
+    if (!lab) return res.status(404).json({ message: 'Institution not found.' });
+
+    return res.json({ lab });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getDashboardStats,
   listInstitutions, createInstitution, getInstitution, updateInstitution,
@@ -442,5 +521,6 @@ module.exports = {
   getSmsUsage,
   getDialogConfig, updateDialogConfig,
   getSystemDefaults, setGlobalTemplateVisibility, setGlobalCategoryVisibility,
+  listSubscriptions, updateSubscription, toggleDisable,
   getStorageStats, clearOldReports,
 };

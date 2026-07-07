@@ -14,6 +14,14 @@ const orderSchema = new mongoose.Schema({
   },
   // e.g. ["FBC", "Lipid Panel", "LFT"]
   testTypes: [{ type: String, trim: true }],
+  testMeta: [{
+    testType:       { type: String, trim: true },
+    partnerId:      { type: mongoose.Schema.Types.ObjectId, ref: 'OutsourcePartner', default: null },
+    partnerName:    { type: String, default: '' },
+    price:          { type: Number, default: 0 },
+    commissionRate: { type: Number, default: 0 },
+    _id: false,
+  }],
   status: {
     type: String,
     enum: ['pending', 'ready', 'delivered', 'submitted', 'sent'],
@@ -35,6 +43,10 @@ const orderSchema = new mongoose.Schema({
     ref:     'CollectingCenter',
     default: null,
   },
+  paymentMethod: { type: String, enum: ['cash', 'card'], default: 'cash' },
+  outsourceDeliveredTestTypes: [{ type: String, trim: true }],
+  cancelledAt: { type: Date, default: null },
+  cancelledBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 });
 
 module.exports = mongoose.model('Order', orderSchema);

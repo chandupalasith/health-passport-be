@@ -1,19 +1,67 @@
-const Lab          = require('../models/Lab');
-const Order        = require('../models/Order');
-const Report       = require('../models/Report');
-const Patient      = require('../models/Patient');
-const TestTemplate = require('../models/TestTemplate');
+const Lab              = require('../models/Lab');
+const Order            = require('../models/Order');
+const Report           = require('../models/Report');
+const Patient          = require('../models/Patient');
+const TestTemplate     = require('../models/TestTemplate');
+const OutsourcePartner = require('../models/OutsourcePartner');
 
 /**
  * POST /api/orders
  */
 async function createOrder(req, res, next) {
   try {
-    const { patientId, testTypes, refDoctor, refDoctorId, sampleType } = req.body;
+    const { patientId, testTypes: rawTestTypes, testMeta: rawTestMeta, refDoctor, refDoctorId, sampleType, paymentMethod } = req.body;
     if (!patientId)
       return res.status(400).json({ message: 'patientId is required.' });
-    if (!Array.isArray(testTypes) || testTypes.length === 0)
-      return res.status(400).json({ message: 'Select at least one test type.' });
+
+    // Resolve testTypes and testMeta
+    let resolvedTestTypes;
+    let resolvedTestMeta = [];
+
+    if (Array.isArray(rawTestMeta) && rawTestMeta.length > 0) {
+      // Validate each testMeta entry has a testType
+      for (const m of rawTestMeta) {
+        if (!m.testType || !String(m.testType).trim())
+          return res.status(400).json({ message: 'Each testMeta entry must have a testType.' });
+      }
+
+      // Validate any partnerId belongs to this lab
+      const partnerIds = rawTestMeta
+        .filter((m) => m.partnerId)
+        .map((m) => m.partnerId);
+
+      if (partnerIds.length > 0) {
+        const validPartners = await OutsourcePartner.find({
+          _id: { $in: partnerIds },
+          labId: req.user.labId,
+        }).select('_id name').lean();
+        const validIds = new Set(validPartners.map((p) => p._id.toString()));
+        const partnerNameMap = new Map(validPartners.map((p) => [p._id.toString(), p.name]));
+
+        for (const m of rawTestMeta) {
+          if (m.partnerId && !validIds.has(String(m.partnerId)))
+            return res.status(400).json({ message: `Partner ${m.partnerId} not found in this lab.` });
+          // Enrich partnerName from DB if not provided
+          if (m.partnerId && !m.partnerName) {
+            m.partnerName = partnerNameMap.get(String(m.partnerId)) || '';
+          }
+        }
+      }
+
+      resolvedTestMeta  = rawTestMeta.map((m) => ({
+        testType:       String(m.testType).trim(),
+        partnerId:      m.partnerId || null,
+        partnerName:    (m.partnerName || '').trim(),
+        price:          Number(m.price)          || 0,
+        commissionRate: Number(m.commissionRate) || 0,
+      }));
+      resolvedTestTypes = resolvedTestMeta.map((m) => m.testType);
+    } else {
+      // Legacy path: plain testTypes array
+      if (!Array.isArray(rawTestTypes) || rawTestTypes.length === 0)
+        return res.status(400).json({ message: 'Select at least one test type.' });
+      resolvedTestTypes = rawTestTypes.map((t) => t.trim()).filter(Boolean);
+    }
 
     const patient = await Patient.findOne({ _id: patientId, labId: req.user.labId });
     if (!patient) return res.status(404).json({ message: 'Patient not found.' });
@@ -33,13 +81,15 @@ async function createOrder(req, res, next) {
     const order = await Order.create({
       labId:              req.user.labId,
       patientId:          patient._id,
-      testTypes:          testTypes.map((t) => t.trim()).filter(Boolean),
+      testTypes:          resolvedTestTypes,
+      testMeta:           resolvedTestMeta,
       orderedBy:          req.user.userId,
       status:             'pending',
       refDoctor:          (refDoctor  || '').trim(),
       refDoctorId:        refDoctorId || null,
       sampleType:         (sampleType || '').trim(),
       billNo,
+      paymentMethod:      ['cash', 'card'].includes(paymentMethod) ? paymentMethod : 'cash',
       collectingCenterId: req.user.collectingCenterId || null,
     });
 
@@ -61,7 +111,7 @@ async function createOrder(req, res, next) {
 async function listOrders(req, res, next) {
   try {
     const { status, categoryId, testType, date, startDate, endDate, search } = req.query;
-    const filter = { labId: req.user.labId };
+    const filter = { labId: req.user.labId, cancelledAt: null };
 
     if (status) {
       // 'ready' includes fully-ready orders AND partial pending orders (filtered post-join)
@@ -140,7 +190,11 @@ async function listOrders(req, res, next) {
     }
     const enriched = orders
       .map((o) => {
-        const completed = doneMap.get(o._id.toString()) ?? [];
+        // Merge report-based completed tests with outsource-delivered tests
+        const reportCompleted   = doneMap.get(o._id.toString()) ?? [];
+        const outsourceDone     = o.outsourceDeliveredTestTypes ?? [];
+        const mergedCompleted   = [...new Set([...reportCompleted, ...outsourceDone])];
+        const completed         = mergedCompleted;
         const completedSet = new Set(completed);
 
         let viewTestTypes;
@@ -153,9 +207,15 @@ async function listOrders(req, res, next) {
         }
         // For ready/submitted status orders, viewTestTypes is omitted — frontend uses testTypes
 
+        // Tests routed to an outsource partner
+        const outsourceTestTypes = (o.testMeta ?? [])
+          .filter((m) => m.partnerId)
+          .map((m) => m.testType);
+
         return {
           ...o.toObject(),
           completedTestTypes: completed,
+          outsourceTestTypes,
           ...(viewTestTypes !== undefined ? { viewTestTypes } : {}),
         };
       })
@@ -191,4 +251,58 @@ async function markDelivered(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { createOrder, listOrders, markDelivered };
+/**
+ * PATCH /api/orders/:orderId/deliver-test
+ * Marks a specific outsource test type as delivered without requiring a report.
+ * If all test types are now complete (reports + outsource delivery), promotes the order to 'ready'.
+ */
+async function deliverTestType(req, res, next) {
+  try {
+    const { testType } = req.body;
+    if (!testType) return res.status(400).json({ message: 'testType is required.' });
+
+    const order = await Order.findOne({ _id: req.params.orderId, labId: req.user.labId });
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    if (!order.testTypes.includes(testType))
+      return res.status(400).json({ message: 'testType not in this order.' });
+
+    // Add to outsourceDeliveredTestTypes (idempotent)
+    if (!order.outsourceDeliveredTestTypes.includes(testType)) {
+      order.outsourceDeliveredTestTypes.push(testType);
+    }
+
+    // Check if all tests are now done (reports + outsource delivered)
+    const reportsDone = await Report.find({ orderId: order._id }).select('testType').lean();
+    const doneSet = new Set([
+      ...reportsDone.map((r) => r.testType),
+      ...order.outsourceDeliveredTestTypes,
+    ]);
+    if (order.testTypes.every((t) => doneSet.has(t))) {
+      order.status = 'ready';
+    }
+
+    await order.save();
+    return res.json({ order });
+  } catch (err) { next(err); }
+}
+
+/**
+ * PATCH /api/orders/:orderId/cancel
+ * Admin-only soft-cancel. Sets cancelledAt so the order is hidden from the queue
+ * and excluded from sales figures.
+ */
+async function cancelOrder(req, res, next) {
+  try {
+    const order = await Order.findOne({ _id: req.params.orderId, labId: req.user.labId });
+    if (!order) return res.status(404).json({ message: 'Order not found.' });
+    if (order.cancelledAt) return res.status(400).json({ message: 'Order is already cancelled.' });
+
+    order.cancelledAt = new Date();
+    order.cancelledBy = req.user.userId;
+    await order.save();
+
+    return res.json({ message: 'Order cancelled.', order });
+  } catch (err) { next(err); }
+}
+
+module.exports = { createOrder, listOrders, markDelivered, deliverTestType, cancelOrder };

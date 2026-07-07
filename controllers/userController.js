@@ -22,11 +22,14 @@ async function listUsers(req, res, next) {
 
 async function createUser(req, res, next) {
   try {
-    const { name, username, password, collectingCenterId } = req.body;
+    const { name, username, password, collectingCenterId, role } = req.body;
 
     if (!name?.trim() || !username?.trim() || !password) {
       return res.status(400).json({ message: 'name, username and password are required.' });
     }
+
+    const validRoles = ['admin', 'technician', 'manager'];
+    const assignedRole = validRoles.includes(role) ? role : 'technician';
 
     // Validate collecting center if provided
     if (collectingCenterId) {
@@ -42,7 +45,7 @@ async function createUser(req, res, next) {
       name:               name.trim(),
       email:              username.toLowerCase().trim(),
       passwordHash:       password,
-      role:               'technician',
+      role:               assignedRole,
       collectingCenterId: collectingCenterId || null,
     });
 
@@ -99,14 +102,19 @@ async function deleteUser(req, res, next) {
       return res.status(400).json({ message: 'You cannot remove your own account.' });
     }
 
-    const user = await User.findOneAndDelete({
-      _id:   req.params.userId,
-      labId: req.user.labId,
-      role:  'technician',
-    });
+    const target = await User.findOne({ _id: req.params.userId, labId: req.user.labId });
+    if (!target) return res.status(404).json({ message: 'User not found.' });
 
-    if (!user) return res.status(404).json({ message: 'Technician not found.' });
-    return res.json({ message: 'Technician removed.' });
+    // Prevent removing the last admin in the lab
+    if (target.role === 'admin') {
+      const adminCount = await User.countDocuments({ labId: req.user.labId, role: 'admin' });
+      if (adminCount <= 1) {
+        return res.status(400).json({ message: 'Cannot remove the last admin account.' });
+      }
+    }
+
+    await target.deleteOne();
+    return res.json({ message: 'User removed.' });
   } catch (err) { next(err); }
 }
 

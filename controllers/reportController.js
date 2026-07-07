@@ -27,6 +27,8 @@ async function createReport(req, res, next) {
     if (duplicate)
       return res.status(409).json({ message: 'Results already submitted for this test.', report: duplicate });
 
+    const meta = order.testMeta?.find((m) => m.testType === testType);
+
     const report = await Report.create({
       orderId,
       labId:       req.user.labId,
@@ -37,6 +39,8 @@ async function createReport(req, res, next) {
       accessToken: crypto.randomUUID(),
       submittedAt: new Date(),
       submittedBy: req.user.userId,
+      partnerName: meta?.partnerName || '',
+      price:       meta?.price       || 0,
     });
 
     // Promote to 'ready' only when every test type in the order has a report
@@ -144,6 +148,7 @@ async function listReports(req, res, next) {
       Report.find(filter)
         .populate('patientId',  'name mobile')
         .populate('submittedBy', 'name')
+        .populate('orderId',     'billNo')
         .select('testType accessToken submittedAt smsSentAt orderId patientId submittedBy')
         .sort({ submittedAt: -1 })
         .skip(skip)
@@ -163,13 +168,17 @@ async function listReports(req, res, next) {
 async function sendReportSms(req, res, next) {
   try {
     const report = await Report.findOne({ _id: req.params.reportId, labId: req.user.labId })
-      .populate('patientId', 'name mobile')
+      .populate('patientId', 'name mobile noPhone')
       .populate('labId',     'name smsCredits');
 
     if (!report) return res.status(404).json({ message: 'Report not found.' });
 
     const patient = report.patientId;
     const lab     = report.labId;
+
+    if (patient.noPhone || patient.mobile === '0000000000') {
+      return res.status(400).json({ message: 'Cannot send SMS: this patient has no phone number on file.' });
+    }
 
     const BASE_URL  = process.env.FRONTEND_URL || 'https://healthpassport.lk';
     const reportUrl = `${BASE_URL}/r/${report.accessToken}`;

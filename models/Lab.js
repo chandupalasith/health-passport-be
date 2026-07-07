@@ -53,6 +53,15 @@ const labSchema = new mongoose.Schema({
   // When true, a thermal receipt is auto-printed on every new order
   canPrintReceipt: { type: Boolean, default: false },
 
+  // Thermal receipt typography (HTML popup font sizes in px)
+  receiptLabNameSize: { type: Number, default: 13  },
+  receiptAddressSize: { type: Number, default: 10  },
+  receiptLine3:       { type: String, trim: true, default: '' },
+  receiptLine3Size:   { type: Number, default: 10  },
+  receiptTitleSize:   { type: Number, default: 11  },
+  receiptMetaSize:    { type: Number, default: 11  },
+  receiptTableSize:   { type: Number, default: 11  },
+
   // QZ Tray silent-print destination names (Windows printer names, exact match)
   thermalPrinterName: { type: String, trim: true, default: '' },
   reportPrinterName:  { type: String, trim: true, default: '' },
@@ -77,6 +86,16 @@ const labSchema = new mongoose.Schema({
 
   // System default categories hidden by this lab (stored as _id strings)
   disabledSystemCategories: [{ type: String, trim: true }],
+
+  // Subscription tracking — managed by super admin
+  subscriptionType:        { type: String, enum: ['monthly', 'yearly', null], default: null },
+  subscriptionStartDate:   { type: Date, default: null },
+  subscriptionRenewalDate: { type: Date, default: null },
+  subscriptionNotes:       { type: String, trim: true, default: '' },
+
+  // Account disable — manual flag set by super admin
+  isDisabled:     { type: Boolean, default: false },
+  disabledReason: { type: String, trim: true, default: 'Your subscription has expired. Please contact support to renew.' },
 
   createdAt: { type: Date, default: Date.now },
 });

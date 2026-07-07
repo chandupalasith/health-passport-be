@@ -67,6 +67,13 @@ const testTemplateSchema = new mongoose.Schema({
   sampleType:     { type: String, default: '' },
   price:          { type: Number, default: 0 },
   margin:         { type: Number, default: 0, min: 0, max: 100 },
+  inhouseAvailable: { type: Boolean, default: true },
+  partnerPricing: [{
+    partnerId:      { type: mongoose.Schema.Types.ObjectId, ref: 'OutsourcePartner', required: true },
+    price:          { type: Number, default: 0 },
+    commissionRate: { type: Number, default: 0, min: 0, max: 100 },
+    _id: false,
+  }],
   defaultComment: { type: String, default: '' },
   columns:        [columnSchema],
   fields:         [fieldSchema],

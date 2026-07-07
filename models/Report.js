@@ -33,6 +33,8 @@ const reportSchema = new mongoose.Schema({
   },
   // Free-text observations/comment printed at the bottom of the report
   comment:     { type: String, default: '' },
+  partnerName: { type: String, default: '' },
+  price:       { type: Number, default: 0 },
   submittedAt: { type: Date },
   submittedBy: {
     type: mongoose.Schema.Types.ObjectId,

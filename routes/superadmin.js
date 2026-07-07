@@ -37,6 +37,11 @@ router.get('/sms-usage', sa.getSmsUsage);
 router.get(  '/dialog-config', sa.getDialogConfig);
 router.patch('/dialog-config', sa.updateDialogConfig);
 
+// Subscription management
+router.get(  '/subscriptions',                          sa.listSubscriptions);
+router.patch('/institutions/:labId/subscription',       sa.updateSubscription);
+router.patch('/institutions/:labId/toggle-disable',     sa.toggleDisable);
+
 // PDF storage management
 router.get( '/storage/stats',   sa.getStorageStats);
 router.post('/storage/clear',   sa.clearOldReports);

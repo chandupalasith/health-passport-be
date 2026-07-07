@@ -32,6 +32,8 @@ async function updateLab(req, res, next) {
       pdfLabNameSize, pdfAddressSize, pdfMetadataSize, pdfTestHeadingSize,
       pdfSectionHeaderSize, pdfRowPadding, pdfCommentsSize, pdfFooterSize,
       pdfLineColor, pdfBadgeColor,
+      receiptLabNameSize, receiptAddressSize, receiptLine3, receiptLine3Size,
+      receiptTitleSize, receiptMetaSize, receiptTableSize,
     } = req.body;
 
     const update = {};
@@ -65,6 +67,14 @@ async function updateLab(req, res, next) {
     if (pdfFooterSize        !== undefined) update.pdfFooterSize        = Number(pdfFooterSize);
     if (pdfLineColor         !== undefined) update.pdfLineColor         = pdfLineColor;
     if (pdfBadgeColor        !== undefined) update.pdfBadgeColor        = pdfBadgeColor;
+
+    if (receiptLabNameSize !== undefined) update.receiptLabNameSize = Number(receiptLabNameSize);
+    if (receiptAddressSize !== undefined) update.receiptAddressSize = Number(receiptAddressSize);
+    if (receiptLine3       !== undefined) update.receiptLine3       = receiptLine3;
+    if (receiptLine3Size   !== undefined) update.receiptLine3Size   = Number(receiptLine3Size);
+    if (receiptTitleSize   !== undefined) update.receiptTitleSize   = Number(receiptTitleSize);
+    if (receiptMetaSize    !== undefined) update.receiptMetaSize    = Number(receiptMetaSize);
+    if (receiptTableSize   !== undefined) update.receiptTableSize   = Number(receiptTableSize);
 
     if (printLetterheadPaddingTop    !== undefined) update.printLetterheadPaddingTop    = Number(printLetterheadPaddingTop);
     if (printLetterheadPaddingBottom !== undefined) update.printLetterheadPaddingBottom = Number(printLetterheadPaddingBottom);

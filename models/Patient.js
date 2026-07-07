@@ -17,6 +17,7 @@ const patientSchema = new mongoose.Schema({
     enum:    ['male', 'female'],
     default: null,
   },
+  noPhone:   { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });
 
