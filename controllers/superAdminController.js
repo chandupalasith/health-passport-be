@@ -279,6 +279,35 @@ async function updateDialogConfig(req, res, next) {
   } catch (err) { next(err); }
 }
 
+// ── Template Library ────────────────────────────────────────────────────────
+
+async function listLibraryTemplates(req, res, next) {
+  try {
+    const raw = await TestTemplate.find({ labId: null })
+      .select('testType shortName category sampleType sharedWithLabs createdAt')
+      .populate('category', 'name color')
+      .populate('sharedWithLabs', 'name')
+      .sort({ testType: 1 })
+      .lean();
+    // Normalise: templates created before sharedWithLabs was added may lack the field
+    const templates = raw.map(t => ({ ...t, sharedWithLabs: t.sharedWithLabs ?? [] }));
+    return res.json({ templates });
+  } catch (err) { next(err); }
+}
+
+async function shareLibraryTemplate(req, res, next) {
+  try {
+    const { labIds } = req.body; // empty array = global (all labs)
+    const template = await TestTemplate.findOneAndUpdate(
+      { _id: req.params.id, labId: null },
+      { $set: { sharedWithLabs: Array.isArray(labIds) ? labIds : [] } },
+      { new: true },
+    ).populate('sharedWithLabs', 'name');
+    if (!template) return res.status(404).json({ message: 'System template not found.' });
+    return res.json({ template });
+  } catch (err) { next(err); }
+}
+
 // ── Global system-default visibility ────────────────────────────────────────
 
 async function getSystemDefaults(req, res, next) {
@@ -520,6 +549,7 @@ module.exports = {
   topupSmsCredits, getTopupHistory,
   getSmsUsage,
   getDialogConfig, updateDialogConfig,
+  listLibraryTemplates, shareLibraryTemplate,
   getSystemDefaults, setGlobalTemplateVisibility, setGlobalCategoryVisibility,
   listSubscriptions, updateSubscription, toggleDisable,
   getStorageStats, clearOldReports,

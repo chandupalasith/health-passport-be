@@ -20,8 +20,7 @@ const reportSchema = new mongoose.Schema({
   testType: { type: String, required: true, trim: true },
   // Flexible key-value store: { WBC: 6.2, RBC: 4.8, Hgb: "13.5" }
   results: {
-    type: Map,
-    of: mongoose.Schema.Types.Mixed,
+    type: mongoose.Schema.Types.Mixed,
     default: {},
   },
   // Unique random token embedded in the patient SMS link

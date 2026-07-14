@@ -1,3 +1,4 @@
+const mongoose     = require('mongoose');
 const TestTemplate = require('../models/TestTemplate');
 const Lab          = require('../models/Lab');
 const SystemConfig = require('../models/SystemConfig');
@@ -20,7 +21,7 @@ const DEFAULT_COLUMNS = [
 async function listTemplates(req, res, next) {
   try {
     const [lab, globalCfg] = await Promise.all([
-      Lab.findById(req.user.labId).select('disabledSystemTemplates').lean(),
+      req.user.labId ? Lab.findById(req.user.labId).select('disabledSystemTemplates').lean() : null,
       SystemConfig.findOne({ key: 'global' }).select('hiddenSystemTemplates').lean(),
     ]);
 
@@ -28,16 +29,31 @@ async function listTemplates(req, res, next) {
     const globalHidden = new Set(globalCfg?.hiddenSystemTemplates ?? []);
 
     // Lab-specific overrides take priority — fetch them first
-    const labTemplates = await TestTemplate.find({ labId: req.user.labId })
-      .select('testType shortName category sampleType price margin inhouseAvailable partnerPricing defaultComment columns labId')
-      .populate('category', 'name color');
+    const labTemplates = req.user.labId
+      ? await TestTemplate.find({ labId: req.user.labId })
+          .select('testType shortName category sampleType price margin inhouseAvailable partnerPricing defaultComment columns labId')
+          .populate('category', 'name color')
+      : [];
 
     const overriddenTypes = new Set(labTemplates.map((t) => t.testType));
 
-    // Fetch all system defaults not overridden by this lab
+    // Fetch system defaults visible to this lab:
+    // - not overridden by a lab-specific template
+    // - sharedWithLabs is empty (global) OR includes this lab
+    const labId = req.user.labId;
+    const labObjId = labId ? new mongoose.Types.ObjectId(labId) : null;
+    const sharedFilter = labObjId
+      ? { $or: [
+          { sharedWithLabs: { $size: 0 } },
+          { sharedWithLabs: { $exists: false } },
+          { sharedWithLabs: labObjId },
+        ] }
+      : {};
+
     const sysTemplates = await TestTemplate.find({
       labId: null,
       testType: { $nin: [...overriddenTypes] },
+      ...sharedFilter,
     })
       .select('testType shortName category sampleType price margin inhouseAvailable partnerPricing defaultComment columns labId')
       .populate('category', 'name color');
@@ -95,16 +111,17 @@ async function getTemplate(req, res, next) {
  */
 async function createTemplate(req, res, next) {
   try {
-    const { testType, shortName, category, sampleType, price, margin, inhouseAvailable, partnerPricing, defaultComment, columns, fields } = req.body;
+    const { testType, shortName, category, sampleType, price, margin, inhouseAvailable, partnerPricing, defaultComment, columns, fields, pdfOverrides } = req.body;
     if (!testType?.trim())
       return res.status(400).json({ message: 'testType is required.' });
 
-    const existing = await TestTemplate.findOne({ labId: req.user.labId, testType: testType.trim() });
+    const labId = req.user.role === 'superadmin' ? null : req.user.labId;
+    const existing = await TestTemplate.findOne({ labId, testType: testType.trim() });
     if (existing)
-      return res.status(409).json({ message: `A template for "${testType}" already exists for your lab.` });
+      return res.status(409).json({ message: `A template for "${testType}" already exists.` });
 
     const template = await TestTemplate.create({
-      labId:            req.user.labId,
+      labId,
       testType:         testType.trim(),
       shortName:        (shortName       || '').trim(),
       category:         category         || null,
@@ -116,6 +133,7 @@ async function createTemplate(req, res, next) {
       defaultComment:   (defaultComment  || '').trim(),
       columns:          columns?.length ? columns : DEFAULT_COLUMNS,
       fields:           fields ?? [],
+      pdfOverrides:     pdfOverrides ?? {},
     });
 
     return res.status(201).json({ template: await template.populate('category', 'name color') });
@@ -128,11 +146,12 @@ async function createTemplate(req, res, next) {
  */
 async function updateTemplate(req, res, next) {
   try {
-    const template = await TestTemplate.findOne({ _id: req.params.id, labId: req.user.labId });
+    const labId = req.user.role === 'superadmin' ? null : req.user.labId;
+    const template = await TestTemplate.findOne({ _id: req.params.id, labId });
     if (!template)
       return res.status(404).json({ message: 'Template not found.' });
 
-    const { testType, shortName, category, sampleType, price, margin, inhouseAvailable, partnerPricing, defaultComment, columns, fields } = req.body;
+    const { testType, shortName, category, sampleType, price, margin, inhouseAvailable, partnerPricing, defaultComment, columns, fields, pdfOverrides } = req.body;
 
     if (testType          !== undefined) template.testType          = testType.trim();
     if (shortName         !== undefined) template.shortName         = shortName.trim();
@@ -145,6 +164,7 @@ async function updateTemplate(req, res, next) {
     if (defaultComment    !== undefined) template.defaultComment    = (defaultComment || '').trim();
     if (columns           !== undefined) template.columns           = columns;
     if (fields            !== undefined) template.fields            = fields;
+    if (pdfOverrides      !== undefined) template.pdfOverrides      = pdfOverrides;
 
     await template.save();
     return res.json({ template: await template.populate('category', 'name color') });
@@ -157,7 +177,8 @@ async function updateTemplate(req, res, next) {
  */
 async function deleteTemplate(req, res, next) {
   try {
-    const template = await TestTemplate.findOne({ _id: req.params.id, labId: req.user.labId });
+    const labId = req.user.role === 'superadmin' ? null : req.user.labId;
+    const template = await TestTemplate.findOne({ _id: req.params.id, labId });
     if (!template)
       return res.status(404).json({ message: 'Template not found (or it is a system default).' });
 

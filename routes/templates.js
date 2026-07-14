@@ -16,9 +16,9 @@ router.get('/',          listTemplates);
 router.get('/:testType', getTemplate);
 
 // ── Admin CRUD ────────────────────────────────────────────────────────────────
-router.post('/',    requireRole('admin'), createTemplate);
-router.put('/:id',  requireRole('admin'), updateTemplate);
-router.delete('/:id', requireRole('admin'), deleteTemplate);
+router.post('/',    requireRole('admin', 'superadmin'), createTemplate);
+router.put('/:id',  requireRole('admin', 'superadmin'), updateTemplate);
+router.delete('/:id', requireRole('admin', 'superadmin'), deleteTemplate);
 router.patch('/system-visibility', requireRole('admin'), setSystemVisibility);
 
 module.exports = router;

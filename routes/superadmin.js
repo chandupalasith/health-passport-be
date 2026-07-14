@@ -46,6 +46,10 @@ router.patch('/institutions/:labId/toggle-disable',     sa.toggleDisable);
 router.get( '/storage/stats',   sa.getStorageStats);
 router.post('/storage/clear',   sa.clearOldReports);
 
+// Template library (superadmin-managed system templates)
+router.get(  '/library',                  sa.listLibraryTemplates);
+router.patch('/library/:id/share',        sa.shareLibraryTemplate);
+
 // Global system-default visibility
 router.get(  '/system-defaults',             sa.getSystemDefaults);
 router.patch('/system-defaults/templates',   sa.setGlobalTemplateVisibility);

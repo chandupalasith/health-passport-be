@@ -7,6 +7,15 @@ const handlebars   = require('handlebars');
 const nodeFetch    = require('node-fetch');
 const TestTemplate = require('../models/TestTemplate');
 
+function renderCommentHtml(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/gs, '<strong>$1</strong>');
+}
+
 const USE_S3 = process.env.NODE_ENV === 'production' && !!process.env.AWS_S3_BUCKET;
 
 // ── Template (compiled once on first use) ────────────────────────────────────
@@ -21,6 +30,16 @@ function getTemplate() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatFieldValue(raw, fieldType) {
+  if (!raw) return raw;
+  const n = parseFloat(raw);
+  if (isNaN(n)) return raw; // text / dropdown — keep as-is
+  if (fieldType === 'decimal2') return n.toFixed(2);
+  if (fieldType === 'decimal4') return n.toFixed(4);
+  if (fieldType === 'integer' || fieldType === 'numeric') return String(Math.round(n));
+  return raw;
+}
 
 function fmtDateTime(date) {
   if (!date) return '';
@@ -133,7 +152,7 @@ async function generatePdf(report) {
   const lab     = report.labId;
   const order   = report.orderId;
   const gender  = patient.gender ?? null;
-  const results = Object.fromEntries(report.results);
+  const results = report.results ?? {};
 
   // Resolve test template (lab-specific first, then system default)
   const tmpl =
@@ -169,7 +188,7 @@ async function generatePdf(report) {
     rows = templateFields.map((field) => {
       if (field.isHeader) return { isHeader: true, name: field.name };
 
-      const val  = String(results[field.name]          ?? '');
+      const val  = formatFieldValue(String(results[field.name] ?? ''), field.fieldType);
       const pct  = String(results[`${field.name}:pct`] ?? '');
       const ref  = resolveRefRange(field, gender);
       const flag = computeFlag(val, field.refRangeMale ?? '', field.refRangeFemale ?? '', gender);
@@ -230,14 +249,14 @@ async function generatePdf(report) {
       badgeColor:        lab.pdfBadgeColor || accent,
       labNameSize:       lab.pdfLabNameSize       ?? 17,
       addressSize:       lab.pdfAddressSize       ?? 8.5,
-      metadataSize:      lab.pdfMetadataSize      ?? 10.5,
-      testHeadingSize:   lab.pdfTestHeadingSize   ?? 9.5,
-      sectionHeaderSize: lab.pdfSectionHeaderSize ?? 9.5,
-      rowPadding:        lab.pdfRowPadding        ?? 2,
-      columnHeaderSize:  lab.pdfColumnHeaderSize  ?? 9.5,
-      rowSize:           lab.pdfRowSize           ?? 10.5,
-      tableSpacing:      lab.pdfTableSpacing      ?? 22,
-      commentsSize:      lab.pdfCommentsSize      ?? 8.5,
+      metadataSize:      tmpl?.pdfOverrides?.metadataSize      ?? lab.pdfMetadataSize      ?? 10.5,
+      testHeadingSize:   tmpl?.pdfOverrides?.testHeadingSize   ?? lab.pdfTestHeadingSize   ?? 9.5,
+      sectionHeaderSize: tmpl?.pdfOverrides?.sectionHeaderSize ?? lab.pdfSectionHeaderSize ?? 9.5,
+      rowPadding:        tmpl?.pdfOverrides?.rowPadding        ?? lab.pdfRowPadding        ?? 2,
+      columnHeaderSize:  tmpl?.pdfOverrides?.columnHeaderSize  ?? lab.pdfColumnHeaderSize  ?? 9.5,
+      rowSize:           tmpl?.pdfOverrides?.rowSize           ?? lab.pdfRowSize           ?? 10.5,
+      tableSpacing:      tmpl?.pdfOverrides?.tableSpacing      ?? lab.pdfTableSpacing      ?? 22,
+      commentsSize:      tmpl?.pdfOverrides?.commentsSize      ?? lab.pdfCommentsSize      ?? 8.5,
       footerSize:        lab.reportFooterSize     ?? lab.pdfFooterSize ?? 7.5,
     },
     patient: {
@@ -255,7 +274,7 @@ async function generatePdf(report) {
     testShortName: (tmpl?.shortName && tmpl.shortName !== report.testType) ? tmpl.shortName : null,
     submittedAt:   fmtDateTime(report.submittedAt),
     signedBy:      report.submittedBy?.name ?? '',
-    comment:       report.comment || null,
+    comment:       report.comment ? renderCommentHtml(report.comment) : null,
     showUnit, showRef, showPct, showFlag,
     customColumns: customCols,
     totalCols,

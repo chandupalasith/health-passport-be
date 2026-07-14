@@ -8,6 +8,34 @@ const Patient      = require('../models/Patient');
 const TestTemplate = require('../models/TestTemplate');
 const { sendSMS }  = require('../services/sms');
 
+/** Validate result values against template field types. Returns an error string or null. */
+async function validateResults(labId, testType, results) {
+  if (!results || typeof results !== 'object') return null;
+  const template = await TestTemplate.findOne({ labId, testType }).lean()
+    ?? await TestTemplate.findOne({ labId: null, testType }).lean();
+  if (!template) return null;
+
+  for (const field of template.fields ?? []) {
+    if (field.isHeader || field.fieldType === 'formula' || field.fieldType === 'text') continue;
+    const val = results[field.name];
+    if (!val && val !== 0) continue; // empty allowed
+
+    const ft = field.fieldType ?? 'decimal2';
+    if (ft === 'integer' || ft === 'numeric') {
+      if (!/^-?\d+$/.test(String(val).trim()))
+        return `"${field.name}" requires a whole number (got: ${val})`;
+    } else if (ft === 'decimal2' || ft === 'decimal4') {
+      if (isNaN(parseFloat(String(val))))
+        return `"${field.name}" requires a number (got: ${val})`;
+    } else if (ft === 'dropdown') {
+      const opts = field.dropdownOptions ?? [];
+      if (opts.length > 0 && !opts.includes(String(val)))
+        return `"${field.name}" has an invalid option (got: ${val})`;
+    }
+  }
+  return null;
+}
+
 // ── Staff endpoints (require verifyToken) ──────────────────────────────────
 
 /**
@@ -26,6 +54,9 @@ async function createReport(req, res, next) {
     const duplicate = await Report.findOne({ orderId, testType });
     if (duplicate)
       return res.status(409).json({ message: 'Results already submitted for this test.', report: duplicate });
+
+    const validationError = await validateResults(req.user.labId, testType, results);
+    if (validationError) return res.status(400).json({ message: validationError });
 
     const meta = order.testMeta?.find((m) => m.testType === testType);
 
@@ -67,7 +98,11 @@ async function updateReport(req, res, next) {
     const report = await Report.findOne({ _id: req.params.reportId, labId: req.user.labId });
     if (!report) return res.status(404).json({ message: 'Report not found.' });
 
-    if (results !== undefined) report.results = results;
+    if (results !== undefined) {
+      const validationError = await validateResults(req.user.labId, report.testType, results);
+      if (validationError) return res.status(400).json({ message: validationError });
+      report.results = results;
+    }
     if (comment !== undefined) report.comment = comment.trim();
     report.pdfUrl = null; // force PDF regeneration on next view
 
@@ -258,7 +293,7 @@ async function getPublicReport(req, res, next) {
         testType:      report.testType,
         testShortName: template?.shortName ?? '',
         submittedAt:   report.submittedAt,
-        results:       Object.fromEntries(report.results),
+        results:       report.results ?? {},
 
         templateFields,
         templateColumns,

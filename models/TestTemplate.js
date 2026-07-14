@@ -35,15 +35,33 @@ const columnSchema = new mongoose.Schema({
  *   ">= 40"         greater than or equal
  *   "Negative"      qualitative text (no numeric comparison)
  */
+const refRangeSchema = new mongoose.Schema({
+  rangeType:   { type: String, enum: ['none','between','lt','lte','gt','gte','qualitative'], default: 'none' },
+  maleMin:     { type: String, default: '' },
+  maleMax:     { type: String, default: '' },
+  femaleMin:   { type: String, default: '' },
+  femaleMax:   { type: String, default: '' },
+  maleValue:   { type: String, default: '' },
+  femaleValue: { type: String, default: '' },
+  maleText:    { type: String, default: '' },
+  femaleText:  { type: String, default: '' },
+}, { _id: false });
+
 const fieldSchema = new mongoose.Schema({
-  name:            { type: String, required: true },
-  unit:            { type: String, default: '' },
-  refRangeMale:    { type: String, default: '' },
-  refRangeFemale:  { type: String, default: '' },
-  isHeader:        { type: Boolean, default: false },
-  isSubField:      { type: Boolean, default: false },
-  fieldType:       { type: String, enum: ['numeric', 'dropdown', 'text'], default: 'numeric' },
-  dropdownOptions: [{ type: String }],
+  name:             { type: String, required: true },
+  fieldType:        { type: String, enum: ['numeric','integer','decimal2','decimal4','text','dropdown','formula'], default: 'decimal2' },
+  formula:          { type: String, default: '' },
+  formulaPrecision: { type: String, enum: ['integer','decimal2','decimal4'], default: 'decimal2' },
+  dropdownOptions:  [{ type: String }],
+  unit:             { type: String, default: '' },
+  refRange:         { type: refRangeSchema, default: () => ({ rangeType: 'none' }) },
+  refRangeMale:     { type: String, default: '' },   // legacy — kept for backward compat
+  refRangeFemale:   { type: String, default: '' },   // legacy — kept for backward compat
+  percentFormula:   { type: String, default: '' },
+  flagEnabled:      { type: Boolean, default: true },
+  customCells:      { type: mongoose.Schema.Types.Mixed, default: {} },
+  isHeader:         { type: Boolean, default: false },
+  isSubField:       { type: Boolean, default: false },
 }, { _id: false });
 
 const testTemplateSchema = new mongoose.Schema({
@@ -77,6 +95,19 @@ const testTemplateSchema = new mongoose.Schema({
   defaultComment: { type: String, default: '' },
   columns:        [columnSchema],
   fields:         [fieldSchema],
+  // Per-template PDF typography overrides. null = use lab default.
+  pdfOverrides: {
+    metadataSize:      { type: Number, default: null },
+    testHeadingSize:   { type: Number, default: null },
+    sectionHeaderSize: { type: Number, default: null },
+    columnHeaderSize:  { type: Number, default: null },
+    rowSize:           { type: Number, default: null },
+    rowPadding:        { type: Number, default: null },
+    tableSpacing:      { type: Number, default: null },
+    commentsSize:      { type: Number, default: null },
+  },
+  // If non-empty, only these labs see this system template; empty = visible to all labs
+  sharedWithLabs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Lab' }],
 }, { timestamps: true });
 
 testTemplateSchema.index({ labId: 1, testType: 1 }, { unique: true });
