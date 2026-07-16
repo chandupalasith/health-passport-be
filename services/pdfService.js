@@ -191,7 +191,9 @@ async function generatePdf(report) {
       const val  = formatFieldValue(String(results[field.name] ?? ''), field.fieldType);
       const pct  = String(results[`${field.name}:pct`] ?? '');
       const ref  = resolveRefRange(field, gender);
-      const flag = computeFlag(val, field.refRangeMale ?? '', field.refRangeFemale ?? '', gender);
+      const flag = (field.flagEnabled !== false)
+        ? computeFlag(val, field.refRangeMale ?? '', field.refRangeFemale ?? '', gender)
+        : '';
 
       return {
         isHeader:     false,
