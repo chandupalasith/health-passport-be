@@ -8,6 +8,8 @@ const Patient      = require('../models/Patient');
 const TestTemplate = require('../models/TestTemplate');
 const { sendSMS }  = require('../services/sms');
 
+const APPROVER_ROLES = ['admin', 'manager'];
+
 /** Validate result values against template field types. Returns an error string or null. */
 async function validateResults(labId, testType, results) {
   if (!results || typeof results !== 'object') return null;
@@ -74,8 +76,14 @@ async function createReport(req, res, next) {
       price:       meta?.price       || 0,
     });
 
-    // Promote to 'ready' only when every test type in the order has a report
-    if (order.testTypes.length > 0) {
+    // Promote to 'ready' only when every test type has a report AND approval isn't required.
+    // When approval is on and user is a technician, the report stays pending approval.
+    const lab = req.user.labId
+      ? await Lab.findById(req.user.labId).select('approvalFeatureEnabled').lean()
+      : null;
+    const needsApproval = lab?.approvalFeatureEnabled && req.user.role === 'technician';
+
+    if (!needsApproval && order.testTypes.length > 0) {
       const submitted = await Report.find({ orderId }).select('testType').lean();
       const submittedSet = new Set(submitted.map((r) => r.testType));
       if (order.testTypes.every((t) => submittedSet.has(t))) {
@@ -133,7 +141,7 @@ async function listReports(req, res, next) {
     // ── Simple queue use ──────────────────────────────────────────────────────
     if (orderId) {
       const reports = await Report.find({ labId, orderId })
-        .select('testType accessToken submittedAt smsSentAt orderId results comment')
+        .select('testType accessToken submittedAt smsSentAt orderId results comment approvalStatus approvedAt rejectedAt')
         .sort({ submittedAt: -1 });
       return res.json({ reports });
     }
@@ -248,6 +256,96 @@ async function sendReportSms(req, res, next) {
   }
 }
 
+// ── Approval workflow endpoints (require verifyToken) ─────────────────────
+
+/**
+ * POST /api/reports/:reportId/submit-approval
+ * Technician marks a saved report as pending approval.
+ */
+async function submitForApproval(req, res, next) {
+  try {
+    const report = await Report.findOne({ _id: req.params.reportId, labId: req.user.labId });
+    if (!report) return res.status(404).json({ message: 'Report not found.' });
+    if (report.approvalStatus === 'approved')
+      return res.status(400).json({ message: 'Report is already approved.' });
+
+    report.approvalStatus = 'pending_approval';
+    await report.save();
+    return res.json({ report });
+  } catch (err) { next(err); }
+}
+
+/**
+ * POST /api/reports/:reportId/approve
+ * Admin or manager approves a report. Promotes order to 'ready' when all tests approved.
+ */
+async function approveReport(req, res, next) {
+  try {
+    if (!APPROVER_ROLES.includes(req.user.role))
+      return res.status(403).json({ message: 'Only admin or manager can approve reports.' });
+
+    const report = await Report.findOne({ _id: req.params.reportId, labId: req.user.labId });
+    if (!report) return res.status(404).json({ message: 'Report not found.' });
+
+    report.approvalStatus = 'approved';
+    report.approvedBy = req.user.userId;
+    report.approvedAt = new Date();
+    await report.save();
+
+    // Promote order to 'ready' when every test is approved (or outsource-delivered)
+    const order = await Order.findById(report.orderId)
+      .select('testTypes outsourceDeliveredTestTypes status');
+    if (order && order.status !== 'ready' && order.status !== 'delivered') {
+      const allReports = await Report.find({ orderId: order._id })
+        .select('testType approvalStatus').lean();
+      const approvedTypes = new Set(
+        allReports.filter((r) => r.approvalStatus === 'approved').map((r) => r.testType),
+      );
+      const outsourceDone = new Set(order.outsourceDeliveredTestTypes ?? []);
+      if (order.testTypes.every((t) => approvedTypes.has(t) || outsourceDone.has(t))) {
+        await Order.findByIdAndUpdate(order._id, { status: 'ready' });
+      }
+    }
+
+    return res.json({ report });
+  } catch (err) { next(err); }
+}
+
+/**
+ * POST /api/reports/:reportId/reject
+ * Admin or manager rejects a report, sending it back to the technician.
+ */
+async function rejectReport(req, res, next) {
+  try {
+    if (!APPROVER_ROLES.includes(req.user.role))
+      return res.status(403).json({ message: 'Only admin or manager can reject reports.' });
+
+    const report = await Report.findOne({ _id: req.params.reportId, labId: req.user.labId });
+    if (!report) return res.status(404).json({ message: 'Report not found.' });
+
+    report.approvalStatus = 'rejected';
+    report.rejectedBy = req.user.userId;
+    report.rejectedAt = new Date();
+    await report.save();
+
+    return res.json({ report });
+  } catch (err) { next(err); }
+}
+
+/**
+ * GET /api/reports/approval-counts
+ * Returns pending_approval and rejected counts for the lab (for badge display).
+ */
+async function getApprovalCounts(req, res, next) {
+  try {
+    const [pendingApprovalCount, rejectedCount] = await Promise.all([
+      Report.countDocuments({ labId: req.user.labId, approvalStatus: 'pending_approval' }),
+      Report.countDocuments({ labId: req.user.labId, approvalStatus: 'rejected' }),
+    ]);
+    return res.json({ pendingApprovalCount, rejectedCount });
+  } catch (err) { next(err); }
+}
+
 // ── Public endpoint (no auth) ──────────────────────────────────────────────
 
 /**
@@ -266,7 +364,7 @@ async function getPublicReport(req, res, next) {
   try {
     const report = await Report.findOne({ accessToken: req.params.token })
       .populate('patientId',  'name mobile dob ageAtRegistration gender')
-      .populate('labId',      'name address phone logoUrl signatureUrl signatoryName signatoryPosition signatoryExtra signatoryFontSize printPaddingTop printPaddingBottom printShowSignatory reportFooter reportFooterSize reportAccentColor regNo regNoSize')
+      .populate('labId',      'name address phone logoUrl signatureUrl signatoryName signatoryPosition signatoryExtra signatoryFontSize printPaddingTop printPaddingBottom printShowSignatory printTestHeadingSpacing printQrEnabled reportFooter reportFooterSize reportAccentColor regNo regNoSize')
       .populate('orderId',    'refDoctor sampleType billNo orderedAt')
       .populate('submittedBy','name');
 
@@ -323,9 +421,11 @@ async function getPublicReport(req, res, next) {
           signatoryPosition:  lab.signatoryPosition  ?? '',
           signatoryExtra:     lab.signatoryExtra     ?? '',
           signatoryFontSize:  lab.signatoryFontSize  ?? 8,
-          printPaddingTop:    lab.printPaddingTop    ?? 25,
-          printPaddingBottom: lab.printPaddingBottom ?? 20,
-          printShowSignatory: lab.printShowSignatory ?? true,
+          printPaddingTop:         lab.printPaddingTop         ?? 25,
+          printPaddingBottom:      lab.printPaddingBottom      ?? 20,
+          printShowSignatory:      lab.printShowSignatory      ?? true,
+          printTestHeadingSpacing: template?.printOverrides?.testHeadingSpacing ?? lab.printTestHeadingSpacing ?? 4,
+          printQrEnabled:          lab.printQrEnabled ?? false,
           reportFooter:       lab.reportFooter       ?? '',
           reportFooterSize:   lab.reportFooterSize   ?? 14,
           reportAccentColor:  lab.reportAccentColor  ?? '#1d4ed8',
@@ -410,4 +510,8 @@ async function getReportPdf(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { createReport, updateReport, listReports, sendReportSms, getPublicReport, getReportPdf };
+module.exports = {
+  createReport, updateReport, listReports, sendReportSms,
+  submitForApproval, approveReport, rejectReport, getApprovalCounts,
+  getPublicReport, getReportPdf,
+};

@@ -78,8 +78,13 @@ async function sendSMS(mobile, message, labId) {
     throw new Error('Insufficient SMS credits. Please contact your administrator to top up.');
   }
 
-  // 3. Send
-  return sendViaDialog({ mobile, message, apiKey: dialogKey, sourceAddress: dialogSrc });
+  // 3. Send — refund the credit if the API call fails so credits only decrease on actual delivery
+  try {
+    return await sendViaDialog({ mobile, message, apiKey: dialogKey, sourceAddress: dialogSrc });
+  } catch (err) {
+    await Lab.findByIdAndUpdate(labId, { $inc: { smsCredits: 1 } });
+    throw err;
+  }
 }
 
 module.exports = { sendSMS };

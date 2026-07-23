@@ -23,7 +23,7 @@ async function updateLab(req, res, next) {
     const {
       name, address, phone, reportFooter, reportFooterSize, reportAccentColor, regNo, regNoSize, logoUrl,
       signatoryName, signatoryPosition, signatoryExtra, signatoryFontSize,
-      printPaddingTop, printPaddingBottom, printShowSignatory,
+      printPaddingTop, printPaddingBottom, printShowSignatory, printTestHeadingSpacing, printQrEnabled,
       dialogApiKey, dialogSourceAddress,
       notifyApiKey, notifySenderId,
       printLetterheadPaddingTop, printLetterheadPaddingBottom,
@@ -50,9 +50,11 @@ async function updateLab(req, res, next) {
     if (signatoryPosition !== undefined) update.signatoryPosition = signatoryPosition;
     if (signatoryExtra    !== undefined) update.signatoryExtra    = signatoryExtra;
     if (signatoryFontSize !== undefined) update.signatoryFontSize = Number(signatoryFontSize);
-    if (printPaddingTop    !== undefined) update.printPaddingTop    = Number(printPaddingTop);
-    if (printPaddingBottom !== undefined) update.printPaddingBottom = Number(printPaddingBottom);
-    if (printShowSignatory !== undefined) update.printShowSignatory = Boolean(printShowSignatory);
+    if (printPaddingTop          !== undefined) update.printPaddingTop          = Number(printPaddingTop);
+    if (printPaddingBottom       !== undefined) update.printPaddingBottom       = Number(printPaddingBottom);
+    if (printShowSignatory       !== undefined) update.printShowSignatory       = Boolean(printShowSignatory);
+    if (printTestHeadingSpacing  !== undefined) update.printTestHeadingSpacing  = Number(printTestHeadingSpacing);
+    if (printQrEnabled           !== undefined) update.printQrEnabled           = Boolean(printQrEnabled);
 
     if (thermalPrinterName !== undefined) update.thermalPrinterName = thermalPrinterName;
     if (reportPrinterName  !== undefined) update.reportPrinterName  = reportPrinterName;

@@ -46,9 +46,11 @@ const labSchema = new mongoose.Schema({
   },
 
   // Print-on-letterhead settings — controlled by admin
-  printPaddingTop:    { type: Number, default: 25 },   // mm — space for pre-printed header
-  printPaddingBottom: { type: Number, default: 20 },   // mm — space for pre-printed footer
-  printShowSignatory: { type: Boolean, default: true }, // show Name/Position block (admin signs physically)
+  printPaddingTop:          { type: Number, default: 25 },    // mm — space for pre-printed header
+  printPaddingBottom:       { type: Number, default: 20 },    // mm — space for pre-printed footer
+  printShowSignatory:       { type: Boolean, default: true }, // show Name/Position block (admin signs physically)
+  printTestHeadingSpacing:  { type: Number, default: 4 },    // px — gap between test name heading and results table
+  printQrEnabled:           { type: Boolean, default: false }, // show QR code on printed reports
 
   // When true, a thermal receipt is auto-printed on every new order
   canPrintReceipt: { type: Boolean, default: false },
@@ -92,6 +94,9 @@ const labSchema = new mongoose.Schema({
   subscriptionStartDate:   { type: Date, default: null },
   subscriptionRenewalDate: { type: Date, default: null },
   subscriptionNotes:       { type: String, trim: true, default: '' },
+
+  // Optional approval workflow — enabled per-lab by superadmin
+  approvalFeatureEnabled: { type: Boolean, default: false },
 
   // Account disable — manual flag set by super admin
   isDisabled:     { type: Boolean, default: false },

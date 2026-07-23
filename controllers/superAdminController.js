@@ -85,17 +85,18 @@ async function getInstitution(req, res, next) {
 
 async function updateInstitution(req, res, next) {
   try {
-    const { name, address, phone, logoUrl, labCode, canPrintReceipt } = req.body;
+    const { name, address, phone, logoUrl, labCode, canPrintReceipt, approvalFeatureEnabled } = req.body;
     if (labCode && !/^[A-Za-z]{2,4}$/.test(labCode.trim())) {
       return res.status(400).json({ message: 'Lab code must be 2–4 letters.' });
     }
     const update = {};
-    if (name             !== undefined) update.name             = name.trim();
-    if (address          !== undefined) update.address          = address.trim();
-    if (phone            !== undefined) update.phone            = phone.trim();
-    if (logoUrl          !== undefined) update.logoUrl          = logoUrl.trim();
-    if (labCode          !== undefined) update.labCode          = labCode.trim().toUpperCase();
-    if (canPrintReceipt  !== undefined) update.canPrintReceipt  = Boolean(canPrintReceipt);
+    if (name                    !== undefined) update.name                    = name.trim();
+    if (address                 !== undefined) update.address                 = address.trim();
+    if (phone                   !== undefined) update.phone                   = phone.trim();
+    if (logoUrl                 !== undefined) update.logoUrl                 = logoUrl.trim();
+    if (labCode                 !== undefined) update.labCode                 = labCode.trim().toUpperCase();
+    if (canPrintReceipt         !== undefined) update.canPrintReceipt         = Boolean(canPrintReceipt);
+    if (approvalFeatureEnabled  !== undefined) update.approvalFeatureEnabled  = Boolean(approvalFeatureEnabled);
 
     const lab = await Lab.findByIdAndUpdate(
       req.params.labId,

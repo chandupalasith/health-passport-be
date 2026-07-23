@@ -106,6 +106,10 @@ const testTemplateSchema = new mongoose.Schema({
     tableSpacing:      { type: Number, default: null },
     commentsSize:      { type: Number, default: null },
   },
+  // Per-template print (letterhead) overrides. null = use lab default.
+  printOverrides: {
+    testHeadingSpacing: { type: Number, default: null },
+  },
   // If non-empty, only these labs see this system template; empty = visible to all labs
   sharedWithLabs: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Lab' }],
 }, { timestamps: true });

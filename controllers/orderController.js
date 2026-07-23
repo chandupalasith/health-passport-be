@@ -113,7 +113,16 @@ async function listOrders(req, res, next) {
     const { status, categoryId, testType, date, startDate, endDate, search } = req.query;
     const filter = { labId: req.user.labId, cancelledAt: null };
 
-    if (status) {
+    // Approval-based tabs — look up order IDs from Report collection
+    if (status === 'pending_approval' || status === 'rejected_approval') {
+      const approvalStatusVal = status === 'pending_approval' ? 'pending_approval' : 'rejected';
+      const orderIds = await Report.distinct('orderId', {
+        labId: req.user.labId,
+        approvalStatus: approvalStatusVal,
+      });
+      filter._id = { $in: orderIds };
+      // Don't add a status filter — these orders are in 'pending' order status
+    } else if (status) {
       // 'ready' includes fully-ready orders AND partial pending orders (filtered post-join)
       if      (status === 'ready')     filter.status = { $in: ['ready', 'submitted', 'pending'] };
       else if (status === 'delivered') filter.status = { $in: ['delivered', 'sent'] };
@@ -180,13 +189,18 @@ async function listOrders(req, res, next) {
       .sort({ orderedAt: -1 });
 
     // Attach which test types already have a submitted report (for partial-order indicator)
+    // Also collect approval statuses per test type for the approval workflow
     const orderIds = orders.map((o) => o._id);
-    const reports  = await Report.find({ orderId: { $in: orderIds } }).select('orderId testType').lean();
-    const doneMap  = new Map();
+    const reports  = await Report.find({ orderId: { $in: orderIds } })
+      .select('orderId testType approvalStatus').lean();
+    const doneMap     = new Map();
+    const approvalMap = new Map();
     for (const r of reports) {
       const key = r.orderId.toString();
-      if (!doneMap.has(key)) doneMap.set(key, []);
+      if (!doneMap.has(key))     doneMap.set(key, []);
+      if (!approvalMap.has(key)) approvalMap.set(key, {});
       doneMap.get(key).push(r.testType);
+      approvalMap.get(key)[r.testType] = r.approvalStatus;
     }
     const enriched = orders
       .map((o) => {
@@ -197,13 +211,19 @@ async function listOrders(req, res, next) {
         const completed         = mergedCompleted;
         const completedSet = new Set(completed);
 
+        const orderApproval = approvalMap.get(o._id.toString()) ?? {};
+
         let viewTestTypes;
         if (status === 'ready' && o.status === 'pending') {
           // Partial order shown in ready tab: only the completed tests
           viewTestTypes = (o.testTypes || []).filter((t) => completedSet.has(t));
         } else if (status === 'pending') {
-          // Pending tab: only the tests not yet completed
+          // Pending tab: only the tests not yet completed (no report of any kind)
           viewTestTypes = (o.testTypes || []).filter((t) => !completedSet.has(t));
+        } else if (status === 'pending_approval') {
+          viewTestTypes = (o.testTypes || []).filter((t) => orderApproval[t] === 'pending_approval');
+        } else if (status === 'rejected_approval') {
+          viewTestTypes = (o.testTypes || []).filter((t) => orderApproval[t] === 'rejected');
         }
         // For ready/submitted status orders, viewTestTypes is omitted — frontend uses testTypes
 
@@ -216,6 +236,7 @@ async function listOrders(req, res, next) {
           ...o.toObject(),
           completedTestTypes: completed,
           outsourceTestTypes,
+          reportApprovalStatuses: approvalMap.get(o._id.toString()) ?? {},
           ...(viewTestTypes !== undefined ? { viewTestTypes } : {}),
         };
       })
@@ -227,6 +248,10 @@ async function listOrders(req, res, next) {
         // In the pending tab, drop orders that are fully complete (no remaining tests)
         if (status === 'pending') {
           return (o.viewTestTypes ?? o.testTypes ?? []).length > 0;
+        }
+        // Drop approval-tab orders that have no matching tests
+        if (status === 'pending_approval' || status === 'rejected_approval') {
+          return (o.viewTestTypes ?? []).length > 0;
         }
         return true;
       });

@@ -41,6 +41,17 @@ const reportSchema = new mongoose.Schema({
   },
   smsSentAt: { type: Date, default: null },
   pdfUrl:    { type: String, default: null },
+
+  // Approval workflow (only active when lab.approvalFeatureEnabled = true)
+  approvalStatus: {
+    type:    String,
+    enum:    ['none', 'pending_approval', 'approved', 'rejected'],
+    default: 'none',
+  },
+  approvedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  approvedAt:  { type: Date, default: null },
+  rejectedBy:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  rejectedAt:  { type: Date, default: null },
 });
 
 module.exports = mongoose.model('Report', reportSchema);

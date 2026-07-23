@@ -111,7 +111,7 @@ async function getTemplate(req, res, next) {
  */
 async function createTemplate(req, res, next) {
   try {
-    const { testType, shortName, category, sampleType, price, margin, inhouseAvailable, partnerPricing, defaultComment, columns, fields, pdfOverrides } = req.body;
+    const { testType, shortName, category, sampleType, price, margin, inhouseAvailable, partnerPricing, defaultComment, columns, fields, pdfOverrides, printOverrides } = req.body;
     if (!testType?.trim())
       return res.status(400).json({ message: 'testType is required.' });
 
@@ -134,6 +134,7 @@ async function createTemplate(req, res, next) {
       columns:          columns?.length ? columns : DEFAULT_COLUMNS,
       fields:           fields ?? [],
       pdfOverrides:     pdfOverrides ?? {},
+      printOverrides:   printOverrides ?? {},
     });
 
     return res.status(201).json({ template: await template.populate('category', 'name color') });
@@ -151,7 +152,7 @@ async function updateTemplate(req, res, next) {
     if (!template)
       return res.status(404).json({ message: 'Template not found.' });
 
-    const { testType, shortName, category, sampleType, price, margin, inhouseAvailable, partnerPricing, defaultComment, columns, fields, pdfOverrides } = req.body;
+    const { testType, shortName, category, sampleType, price, margin, inhouseAvailable, partnerPricing, defaultComment, columns, fields, pdfOverrides, printOverrides } = req.body;
 
     if (testType          !== undefined) template.testType          = testType.trim();
     if (shortName         !== undefined) template.shortName         = shortName.trim();
@@ -165,6 +166,7 @@ async function updateTemplate(req, res, next) {
     if (columns           !== undefined) template.columns           = columns;
     if (fields            !== undefined) template.fields            = fields;
     if (pdfOverrides      !== undefined) template.pdfOverrides      = pdfOverrides;
+    if (printOverrides    !== undefined) template.printOverrides    = printOverrides;
 
     await template.save();
     return res.json({ template: await template.populate('category', 'name color') });
